@@ -1,0 +1,54 @@
+# Databricks Asset Bundle: deploys the ingestion job.
+#   databricks bundle deploy            # uploads notebooks + src, creates the job
+#   databricks bundle run dengue_ingest # runs setup -> land -> bronze once
+bundle:
+  name: upside-devs-dengue
+
+variables:
+  catalog:
+    description: Unity Catalog catalog to write into
+    default: workspace
+  schema:
+    description: Schema for volumes and bronze tables
+    default: dengue
+
+resources:
+  jobs:
+    dengue_ingest:
+      name: dengue-ingest-bronze
+      # NEA refreshes dengue clusters around 10:00 SGT; run after that so every
+      # daily version is captured. Unpause in the Jobs UI to start building history.
+      schedule:
+        quartz_cron_expression: "0 30 11 * * ?"
+        timezone_id: Asia/Singapore
+        pause_status: PAUSED
+      max_concurrent_runs: 1
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: schema
+          default: ${var.schema}
+        - name: include_large
+          default: "false"
+      tasks:
+        - task_key: setup
+          notebook_task:
+            notebook_path: ./notebooks/00_setup.py
+        - task_key: land_raw
+          depends_on:
+            - task_key: setup
+          max_retries: 1
+          min_retry_interval_millis: 60000
+          notebook_task:
+            notebook_path: ./notebooks/01_land_raw.py
+        - task_key: bronze
+          depends_on:
+            - task_key: land_raw
+          max_retries: 1
+          notebook_task:
+            notebook_path: ./notebooks/02_bronze_autoloader.py
+
+targets:
+  dev:
+    mode: development
+    default: true
