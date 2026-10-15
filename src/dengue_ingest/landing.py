@@ -234,7 +234,8 @@ class Lander:
         if prev and prev.get("sha256") == sha and not force:
             return {"source": src.name, "status": "unchanged", "version": prev["version"]}
         version = datetime.now(SGT).strftime("%Y%m%dT%H%M%S")
-        rec = self._commit(src, "file", version, {"data.csv": raw},
+        name = "data.ndjson" if src.fmt == "ndjson" else "data.csv"
+        rec = self._commit(src, "file", version, {name: raw},
                            {"repo_path": src.url, "sha256": sha, "bytes": len(raw)})
         return {**rec, "status": "landed"}
 

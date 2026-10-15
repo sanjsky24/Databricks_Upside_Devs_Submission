@@ -9,7 +9,7 @@ kinds:
               v1 poll-download API and re-landed whenever its lastUpdatedAt changes
   http_zip  - a zip archive of CSVs (SGCharts Outbreak historical cluster snapshots)
   http_file - a single file at a stable URL (figshare)
-  seed      - a CSV checked into this repo under data/seed/
+  seed      - a file checked into this repo under data/seed/ (CSV, or NDJSON with fmt="ndjson")
 """
 
 from dataclasses import dataclass, field
@@ -23,7 +23,7 @@ class Source:
     description: str
     dataset_id: str | None = None
     url: str | None = None
-    fmt: str = "csv"  # csv | geojson
+    fmt: str = "csv"  # csv | geojson | ndjson
     # Options passed to the bronze CSV reader (e.g. headerless files)
     csv_header: bool = True
     csv_schema: str | None = None
@@ -86,6 +86,9 @@ SOURCES: list[Source] = [
     # ------------------------------------------------------------- HDB / URA
     _dg("hdb_property_information", "d_17f5382f26140b1fdae0ba2ef6239d2f", "csv", "geo",
         "HDB property information (block, street, year completed, units by type)"),
+    _dg("hdb_existing_building", "d_16b157c52ed637edd6ba1232e026258d", "geojson", "geo",
+        "HDB existing building footprints (polygons with block number, postal code). Gives HDB blocks "
+        "their coordinates; HDB Property Information has none."),
     _dg("ura_mp2019_planning_area", "d_4765db0e87b9c86336792efe8a1f7a66", "geojson", "geo",
         "URA Master Plan 2019 planning area boundary (no sea)"),
     _dg("ura_mp2019_subzone", "d_8594ae9ff96d0c708bc2af633048edfb", "geojson", "geo",
@@ -119,11 +122,32 @@ SOURCES: list[Source] = [
                     "figshare 10.6084/m9.figshare.13142777; Huang et al., Scientific Data 9:547.",
     ),
 
+    Source(
+        name="nea_dengue_clusters_wayback", kind="seed", group="dengue_history", fmt="ndjson",
+        url="data/seed/nea_dengue_clusters_wayback_2018_2026.ndjson",
+        description="NEA dengue cluster lists from 74 Internet Archive captures of nea.gov.sg, Dec 2018 - Sep 2026 "
+                    "(one row per cluster; streets = street-level case counts; capture_url per row). "
+                    "Parsed from the archived pages; source NEA. Built by scripts/build_wayback_seed.py.",
+    ),
+
     # ---------------------------------------------------------- Manual seeds
     Source(
         name="wolbachia_release_start_dates", kind="seed", group="vector",
         url="data/seed/wolbachia_release_start_dates.csv",
         description="Project Wolbachia phase/site start dates compiled by hand from NEA web pages (source_url per row).",
+    ),
+    Source(
+        name="wolbachia_zone_start_dates", kind="seed", group="vector",
+        url="data/seed/wolbachia_zone_start_dates.csv",
+        description="Release start date for each of the 31 zones in NEA's Wolbachia Release Sites layer; zone names "
+                    "match that layer exactly (note the trailing space in 'Moulmein - Dorset '). "
+                    "confidence = high/medium/low; Circuit Road is inferred (low).",
+    ),
+    Source(
+        name="cda_weekly_dengue", kind="seed", group="cases",
+        url="data/seed/cda_weekly_dengue_2023_2026.csv",
+        description="Weekly national dengue and DHF cases by epi-week, 2023-2026, parsed from CDA Weekly Infectious "
+                    "Diseases Bulletin PDFs (cda.gov.sg). Some 2025 weeks are missing.",
     ),
 ]
 

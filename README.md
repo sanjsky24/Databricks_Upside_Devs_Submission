@@ -32,11 +32,15 @@ repo seed CSV   ┘                                        │
 | `bronze_weather_station_rainfall_hist` | *(optional, ~9 GB)* 5-min station rainfall 2016–2024 (`_part` = year) | 9 yearly datasets |
 | `bronze_weather_station_air_temp_hist` | *(optional, ~9 GB)* station air temperature 2016–2024 | 9 yearly datasets |
 | `bronze_hdb_property_information` | HDB Property Information | `d_17f5382f26140b1fdae0ba2ef6239d2f` |
+| `bronze_hdb_existing_building` | HDB building footprints (block, postal code); gives blocks their coordinates | `d_16b157c52ed637edd6ba1232e026258d` |
 | `bronze_ura_mp2019_planning_area` / `_subzone` | URA Master Plan 2019 boundaries | `d_4765…`, `d_8594…` |
 | `bronze_ura_mp2025_planning_area` | URA Master Plan 2025 planning areas | `d_2cc750190544007400b2cfd5d7f53209` |
 | `bronze_sgcharts_dengue_clusters_2013_2020` | Past NEA cluster lists, 347 snapshots May 2013 – Nov 2020 | [outbreak.sgcharts.com/data](https://outbreak.sgcharts.com/data) |
 | `bronze_scidata_dengue_clusters_2020` | Dengue clusters Feb–Jul 2020 (Huang et al., *Scientific Data*) | [figshare 13142777](https://doi.org/10.6084/m9.figshare.13142777) |
+| `bronze_nea_dengue_clusters_wayback` | Past NEA cluster lists from 74 Internet Archive captures, Dec 2018 – Sep 2026 | [`data/seed/nea_dengue_clusters_wayback_2018_2026.ndjson`](data/seed/nea_dengue_clusters_wayback_2018_2026.ndjson) |
 | `bronze_wolbachia_release_start_dates` | Wolbachia phase/site start dates compiled from NEA pages | [`data/seed/wolbachia_release_start_dates.csv`](data/seed/wolbachia_release_start_dates.csv) |
+| `bronze_wolbachia_zone_start_dates` | Start date for each of the 31 zones in NEA's Wolbachia layer (used by the model) | [`data/seed/wolbachia_zone_start_dates.csv`](data/seed/wolbachia_zone_start_dates.csv) |
+| `bronze_cda_weekly_dengue` | Weekly national dengue cases 2023–2026 from CDA bulletin PDFs | [`data/seed/cda_weekly_dengue_2023_2026.csv`](data/seed/cda_weekly_dengue_2023_2026.csv) |
 
 The full registry lives in [`src/dengue_ingest/sources.py`](src/dengue_ingest/sources.py); add a row there to ingest another dataset.
 
@@ -65,12 +69,13 @@ Set `include_large = true` to also pull the station-level weather history.
 **As a job (Asset Bundle):**
 
 ```bash
-databricks bundle deploy -t dev --var="catalog=workspace" --var="schema=dengue"
-databricks bundle run dengue_ingest
+databricks bundle deploy -t prod
+databricks bundle run dengue_ingest -t prod
 ```
 
-The job is scheduled daily at 11:30 SGT but deployed **paused**. Unpause it to start collecting daily
-cluster versions.
+The `prod` job runs every day at 11:30 and 18:30 SGT (the second run is a backup) and emails you if a
+run fails. Every missed day is cluster history that can't be recovered, so keep it unpaused.
+`-t dev` deploys a paused copy that writes to schema `dengue_dev`, for experiments.
 
 **Locally (landing only, no Spark):**
 
@@ -91,3 +96,12 @@ locally) for higher rate limits. Without one, the client backs off and retries a
   press releases; each row has its `source_url` and a date precision (`day` / `month` / `quarter`).
   `town_hint` is hand-assigned. Validate it spatially against `bronze_nea_wolbachia_release_sites`.
   Some press coverage mentions Pasir Ris from Mar 2026; no NEA page confirmed it, so it is not included.
+* **Wolbachia zone dates** (`wolbachia_zone_start_dates.csv`): one row per zone in NEA's release-sites layer, names
+  matching it exactly (including the trailing space in `"Moulmein - Dorset "`). This is the file the model uses to
+  work out which areas were protected on any given date. Circuit Road's date is inferred (`confidence = low`);
+  Pasir Ris (Mar 2026) relies on press coverage.
+* **Internet Archive cluster lists**: parsed from archived copies of NEA's dengue cluster page (source: NEA). Coverage
+  is thin in 2021 (few captures) and 2023–24 (8–9 a year). Each row keeps its `capture_url`. 11 of 6,946 clusters have
+  street counts that don't add up to the cluster total, as printed on NEA's page. To rebuild the seed, run
+  `python scripts/build_wayback_seed.py <wb_clusters.json>`.
+* **CDA weekly cases**: parsed from the bulletin PDFs; 2025 is missing about 9 weeks.

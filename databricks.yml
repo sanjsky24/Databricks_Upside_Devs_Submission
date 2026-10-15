@@ -1,8 +1,16 @@
 # Databricks Asset Bundle: deploys the ingestion job.
-#   databricks bundle deploy            # uploads notebooks + src, creates the job
-#   databricks bundle run dengue_ingest # runs setup -> land -> bronze once
+#   databricks bundle deploy -t prod            # the real, scheduled job (builds the daily history)
+#   databricks bundle run dengue_ingest -t prod # runs setup -> land -> bronze once, right now
+#   databricks bundle deploy -t dev             # a paused copy writing to schema dengue_dev, for experiments
 bundle:
   name: upside-devs-dengue
+
+# Only code and seed data go to the workspace; notes, slides and local downloads stay on your laptop.
+sync:
+  exclude:
+    - HANDOFF.md
+    - "*.pdf"
+    - _landing
 
 variables:
   catalog:
@@ -16,13 +24,17 @@ resources:
   jobs:
     dengue_ingest:
       name: dengue-ingest-bronze
-      # NEA refreshes dengue clusters around 10:00 SGT; run after that so every
-      # daily version is captured. Unpause in the Jobs UI to start building history.
+      # NEA refreshes dengue clusters around 10:00 SGT. The 11:30 run captures that
+      # day's version; the 18:30 run is a backup in case the morning run fails or NEA
+      # publishes late. A run only stores a new copy when NEA actually changed the data.
       schedule:
-        quartz_cron_expression: "0 30 11 * * ?"
+        quartz_cron_expression: "0 30 11,18 * * ?"
         timezone_id: Asia/Singapore
-        pause_status: PAUSED
+        pause_status: UNPAUSED
       max_concurrent_runs: 1
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
       parameters:
         - name: catalog
           default: ${var.catalog}
@@ -49,6 +61,15 @@ resources:
             notebook_path: ./notebooks/02_bronze_autoloader.py
 
 targets:
+  # Development mode prefixes the job name with [dev <you>] and pauses its schedule,
+  # so experiments never run on their own or touch the real history.
   dev:
     mode: development
     default: true
+    variables:
+      schema: dengue_dev
+
+  # No `mode` here on purpose: development mode would pause the schedule on every deploy.
+  prod:
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/prod

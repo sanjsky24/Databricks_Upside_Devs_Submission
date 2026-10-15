@@ -47,8 +47,9 @@ def reader(spark, src: Source, landing_root, schema_location, streaming=True):
     how the pipeline is tested off-Databricks (Auto Loader is Databricks-only).
     """
     path = f"{landing_root}/{src.name}/*/v=*/"
-    fmt = "json" if src.fmt == "geojson" else "csv"
-    glob = "features.ndjson" if fmt == "json" else "*.csv"
+    # GeoJSON is landed as features.ndjson next to the original; NDJSON seeds as data.ndjson
+    fmt = "json" if src.fmt in ("geojson", "ndjson") else "csv"
+    glob = "*.ndjson" if fmt == "json" else "*.csv"
 
     if streaming:
         r = (spark.readStream.format("cloudFiles")
