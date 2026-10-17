@@ -12,8 +12,10 @@
 --   silver_source_agreement  case totals from each archive on dates they both cover
 --
 -- History = sgcharts (Jul 2015 - Nov 2020) -> Internet Archive captures of NEA's page
--- (after Nov 2020) -> NEA's live data.gov.sg layer (captured daily since 15 Oct 2026).
--- Source of all cluster lists: NEA.
+-- (after Nov 2020) -> our own captures of NEA's page (from 17 Oct 2026; same fields as the
+-- archive, dated by the page's "as at" date). NEA's data.gov.sg layer (captured from
+-- 15 Oct 2026) fills only the days before the first page capture: it has no "recent
+-- cases" count and runs a day or two behind the page. Source of all cluster lists: NEA.
 --
 -- Geometry note: a few URA and NEA polygons are slightly invalid (self-touching rings);
 -- st_buffer(g, 0) repairs them without changing their area. Coordinates are WGS84
@@ -30,7 +32,9 @@ SELECT map(
   'ter', 'terrace', 'pk', 'park', 'pl', 'place', 'ln', 'lane', 'gdns', 'gardens',
   'hts', 'heights', 'cwealth', 'commonwealth', 'kg', 'kampong', 'mkt', 'market',
   'sq', 'square', 'ind', 'industrial', 'pde', 'parade', 'vw', 'view', 'wk', 'walk',
-  'e', 'east', 'w', 'west', 'grn', 'green', 'gr', 'grove', 'cir', 'circle', 'bldg', 'building'
+  'e', 'east', 'w', 'west', 'grn', 'green', 'gr', 'grove', 'cir', 'circle', 'bldg', 'building',
+  -- misspellings seen on NEA's page
+  'cantoment', 'cantonment'
 ) AS m;
 
 
@@ -127,7 +131,7 @@ cand AS (
   JOIN bld_pa b ON b.blk = p.blk AND b.planning_area = t.planning_area
 ),
 street_code AS (
-  SELECT street, max_by(st_cod, n) AS st_cod
+  SELECT street, max_by(st_cod, struct(n, st_cod)) AS st_cod  -- ties broken by code, so runs agree
   FROM (SELECT street, st_cod, count(*) AS n FROM cand WHERE n_cand = 1 GROUP BY street, st_cod)
   GROUP BY street
 ),
@@ -181,12 +185,12 @@ LEFT JOIN wol w ON w.prop_key = m.prop_key;
 CREATE OR REFRESH MATERIALIZED VIEW silver_street_locations (
   CONSTRAINT located EXPECT (method != 'none')
 )
-COMMENT 'Each street named in the Internet Archive cluster lists with its map position and how it was found (block / road / road_exp / none). Road centres (c) OpenStreetMap contributors, ODbL.'
+COMMENT 'Each street named in the Internet Archive and NEA page cluster lists with its map position and how it was found (block / road / road_exp / none). Road centres (c) OpenStreetMap contributors, ODbL.'
 AS
 WITH streets AS (
-  SELECT DISTINCT s.street
-  FROM bronze_nea_dengue_clusters_wayback_latest
-  LATERAL VIEW explode(streets) t AS s
+  SELECT s.street FROM bronze_nea_dengue_clusters_wayback_latest LATERAL VIEW explode(streets) t AS s
+  UNION
+  SELECT s.street FROM bronze_nea_dengue_cluster_page LATERAL VIEW explode(streets) t AS s
 ),
 parsed AS (
   SELECT
@@ -232,7 +236,7 @@ CREATE OR REFRESH MATERIALIZED VIEW silver_cluster_points (
   CONSTRAINT inside_singapore EXPECT (lon IS NULL OR (lon BETWEEN 103.6 AND 104.1 AND lat BETWEEN 1.15 AND 1.48)),
   CONSTRAINT located EXPECT (planning_area IS NOT NULL)
 )
-COMMENT 'Every location in every NEA cluster list, 2015 -> today: sgcharts addresses (lat/lon given), Internet Archive streets (geocoded), live NEA polygons (centroid). One list date per day; sgcharts until its last date, archive captures after it, live captures after the last archive capture.'
+COMMENT 'Every location in every NEA cluster list, 2015 -> today: sgcharts addresses (lat/lon given), Internet Archive and NEA page streets (geocoded), data.gov.sg polygons (centroid). One list per date; each source only after the previous one ends: sgcharts, Internet Archive, data.gov.sg layer (until the first page capture), NEA page.'
 AS
 WITH sg AS (
   SELECT
@@ -270,6 +274,26 @@ wb AS (
   WHERE to_date(w.asat_d) > (SELECT d FROM sg_last)
 ),
 wb_last AS (SELECT max(asat_d) AS d FROM bronze_nea_dengue_clusters_wayback_latest),
+page_caps AS (
+  SELECT * FROM bronze_nea_dengue_cluster_page
+  QUALIFY snap = max(snap) OVER (PARTITION BY asat_d)
+),
+page_first AS (SELECT min(to_date(asat_d)) AS d FROM page_caps),
+page AS (
+  SELECT
+    to_date(w.asat_d) AS snapshot_date, 'nea_page' AS source,
+    concat('nea_page|', w.asat_d, '|', w.locality) AS cluster_id,
+    w.locality,
+    w.s.street AS location_text,
+    CAST(w.s.cases AS INT) AS cases,
+    CAST(w.recent AS INT) AS recent,
+    CAST(w.total AS INT) AS total,
+    w.alert,
+    l.lon, l.lat, l.method AS locate_method
+  FROM (SELECT pc.*, s FROM page_caps pc LATERAL VIEW explode(pc.streets) t AS s) w
+  LEFT JOIN silver_street_locations l ON l.street = w.s.street
+  WHERE to_date(w.asat_d) > (SELECT to_date(d) FROM wb_last)
+),
 live_versions AS (
   -- NEA can publish more than once a day: keep the last version of each day
   SELECT * FROM bronze_nea_dengue_clusters
@@ -290,9 +314,10 @@ live AS (
     'polygon_centroid' AS locate_method
   FROM live_versions
   WHERE to_date(_version_ts_sgt) > (SELECT to_date(d) FROM wb_last)
+    AND to_date(_version_ts_sgt) < coalesce((SELECT d FROM page_first), DATE'9999-12-31')
 ),
 pts AS (
-  SELECT * FROM sg UNION ALL SELECT * FROM wb UNION ALL SELECT * FROM live
+  SELECT * FROM sg UNION ALL SELECT * FROM wb UNION ALL SELECT * FROM live UNION ALL SELECT * FROM page
 ),
 places AS (
   -- look up planning area and Wolbachia zone once per distinct position
@@ -328,16 +353,25 @@ CREATE OR REFRESH MATERIALIZED VIEW silver_clusters (
   CONSTRAINT has_planning_area EXPECT (planning_area IS NOT NULL),
   CONSTRAINT mostly_located EXPECT (cases_located >= 0.5 * cases_listed)
 )
-COMMENT 'One row per cluster per list date. planning_area = the area holding most of its located cases. is_active = cases in the last 2 weeks (recent > 0; live and pre-2013 lists have no recent count and count as active). alert: red = 10+ cases (NEA), yellow = fewer.'
+COMMENT 'One row per cluster per list date. planning_area = the area holding most of its located cases. is_active = cases in the last 2 weeks (recent > 0; data.gov.sg lists have no recent count and count as active). alert: red = 10+ cases (NEA), yellow = fewer.'
 AS
 WITH by_pa AS (
   SELECT cluster_id, planning_area, sum(cases) AS pa_cases
   FROM silver_cluster_points WHERE planning_area IS NOT NULL
   GROUP BY cluster_id, planning_area
 ),
+homes AS (
+  SELECT planning_area, sum(total_dwelling_units) AS du FROM silver_hdb_blocks GROUP BY planning_area
+),
 majority AS (
-  SELECT cluster_id, max_by(planning_area, pa_cases) AS planning_area
-  FROM by_pa GROUP BY cluster_id
+  -- most cases wins; on a tie, the area with more HDB homes (clusters form where people
+  -- live), then alphabetical, so the same data always gives the same answer. Ties happen
+  -- when a short street name matches a same-named road elsewhere, e.g. NEA's "Jalan
+  -- Piring" (Jalan Tari Piring, Seletar Hills) vs a "Jalan Piring" in the west.
+  SELECT b.cluster_id,
+         max_by(b.planning_area, struct(b.pa_cases, coalesce(h.du, 0), b.planning_area)) AS planning_area
+  FROM by_pa b LEFT JOIN homes h ON h.planning_area = b.planning_area
+  GROUP BY b.cluster_id
 )
 SELECT
   c.cluster_id,

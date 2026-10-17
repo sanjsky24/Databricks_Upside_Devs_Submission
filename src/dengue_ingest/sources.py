@@ -9,6 +9,7 @@ kinds:
               v1 poll-download API and re-landed whenever its lastUpdatedAt changes
   http_zip  - a zip archive of CSVs (SGCharts Outbreak historical cluster snapshots)
   http_file - a single file at a stable URL (figshare)
+  nea_page  - NEA's dengue cluster web page, parsed into one record per cluster (nea_page.py)
   seed      - a file checked into this repo under data/seed/ (CSV, or NDJSON with fmt="ndjson")
 """
 
@@ -42,6 +43,13 @@ SOURCES: list[Source] = [
     # ---------------------------------------------------------------- NEA dengue
     _dg("nea_dengue_clusters", "d_dbfabf16158d1b0e1c420627c0819168", "geojson", "dengue",
         "NEA active dengue clusters (polygons, case counts). Updated daily; every change is kept as a version."),
+    Source(
+        name="nea_dengue_cluster_page", kind="nea_page", group="dengue", fmt="ndjson",
+        url="https://www.nea.gov.sg/dengue-zika/dengue/dengue-clusters",
+        description="NEA's dengue cluster page, captured at every run and kept whenever the list changes. Same fields "
+                    "as the Internet Archive captures: alert, recent (onset in last 2 weeks), total, street breakdown. "
+                    "asat_d is the 'accurate as at' date printed on the page.",
+    ),
     _dg("nea_dengue_cases_by_region", "d_5f90123ce50e3d323bfd0ff3c9a84601", "geojson", "dengue",
         "NEA dengue cases - Central region", tags=("central",)),
     _dg("nea_dengue_cases_by_region", "d_e95e09fb3e54a3249e4bdf32e463effa", "geojson", "dengue",

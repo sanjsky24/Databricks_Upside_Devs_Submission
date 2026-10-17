@@ -66,8 +66,9 @@ resources:
             pipeline_id: ${resources.pipelines.silver.id}
 
   pipelines:
-    # Lakeflow Declarative Pipeline: bronze -> one mapped cluster history (silver_* tables),
-    # with data-quality expectations. Runs as the last step of the job above.
+    # Lakeflow Declarative Pipeline: bronze -> one mapped cluster history (silver_* tables)
+    # -> the area-by-fortnight model table (gold_*), with data-quality expectations.
+    # Runs as the last step of the job above.
     silver:
       name: dengue-silver
       catalog: ${var.catalog}
@@ -76,6 +77,8 @@ resources:
       libraries:
         - file:
             path: ./pipelines/silver_clusters.sql
+        - file:
+            path: ./pipelines/gold_area_fortnight.sql
 
 targets:
   # Development mode prefixes the job name with [dev <you>] and pauses its schedule,

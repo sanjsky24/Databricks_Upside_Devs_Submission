@@ -21,6 +21,7 @@ repo seed CSV   ┘                                        │
 | Bronze table | Source | data.gov.sg id / URL |
 |---|---|---|
 | `bronze_nea_dengue_clusters` | NEA Dengue Clusters (daily, versioned) | `d_dbfabf16158d1b0e1c420627c0819168` |
+| `bronze_nea_dengue_cluster_page` | NEA's dengue cluster web page, parsed at every run: alert, cases in the last 2 weeks, total, street breakdown | [nea.gov.sg/…/dengue-clusters](https://www.nea.gov.sg/dengue-zika/dengue/dengue-clusters) |
 | `bronze_nea_dengue_cases_by_region` | NEA Dengue Cases – Central / NE / NW / SE / SW (`_part` = region) | `d_5f90…`, `d_e95e…`, `d_ce8c…`, `d_2c13…`, `d_e342…` |
 | `bronze_nea_high_aedes_areas` | Areas with High Aedes Population | `d_5d060d8b7838a15e8906fb22c50dbf51` |
 | `bronze_nea_wolbachia_release_sites` | Wolbachia Release Sites | `d_533d673fe769e58f71609c18080ea7a7` |
@@ -117,7 +118,8 @@ bronze tables into one cluster history from 2015 to today, every cluster placed 
 ```
 sgcharts 2015-07 → 2020-11 (lat/lon given) ─┐
 Internet Archive 2021 → 2026-09 (streets) ──┼─► silver_cluster_points ─► silver_clusters (area, alert, active)
-NEA live layer, daily from 15 Oct 2026 ─────┘        ▲
+NEA page, every run from 17 Oct 2026 ───────┤        ▲
+(data.gov.sg layer only before that) ───────┘        │
 HDB blocks + OpenStreetMap roads ─► silver_street_locations
 URA planning areas, Wolbachia zones + start dates ─► silver_planning_areas, silver_wolbachia_zones, silver_hdb_blocks
 ```
@@ -138,3 +140,28 @@ with under half their cases placed, and any disagreement between archives; see t
 
 Checked against the prototype: 314 archived list dates, 17,750 active clusters, 99% of archive cases placed, 67% of
 HDB homes in today's Wolbachia zones, and the same share of cases inside those zones by period (2015–16 67% … 2025 20%).
+
+**Live clusters come from NEA's page, not the data.gov.sg layer.** The page has the same fields as the Internet
+Archive captures the model learns from (including cases with onset in the last 2 weeks, which the data.gov.sg layer
+lacks) and is a day or two more current. The data.gov.sg layer is still captured and fills only the days before the
+first page capture. The parser (`src/dengue_ingest/nea_page.py`) fails the run loudly if the page layout changes.
+
+## Step 3 – Gold: the area-by-fortnight table
+
+[`pipelines/gold_area_fortnight.sql`](pipelines/gold_area_fortnight.sql) (same pipeline) builds `gold_area_fortnight`:
+one row per planning area per cluster-list date, with what was known that day and the area's risk level about two
+weeks later. It is what the model trains on and what the weekly forecast scores.
+
+* **Risk level** (NEA terms): 2 High = an active cluster with 10+ cases, 1 Medium = any active cluster, 0 Low.
+* **Features**: today's level, recent and total cases, number of clusters, past cases here (each list weighted by
+  `exp(-days/180)`), average level over the last 3 lists, recent cases in neighbouring areas (`gold_area_neighbours`,
+  boundaries within 50 m), national recent cases, HDB homes, share of homes in Wolbachia zones started ≥60 days
+  earlier, season.
+* **Label `y`**: the level at the first list ≥14 days later, kept only if that list is 14–35 days away.
+  A **new cluster** is `cls = 0` today and `y > 0`.
+* Daily lists from our own captures are thinned to every 4th day back from the newest, matching the twice-weekly
+  rhythm of the 2015–20 training data.
+
+Matches the prototype: 15,345 labelled pairs. The 2024–26 test window has 69 new-cluster cases (prototype: 68); the
+extra one is a cluster on 13 Jul 2026 split 2–2 between Sengkang and a same-named road in Western Water Catchment,
+which the prototype resolved by chance and the pipeline now resolves to the area with more homes (Sengkang).

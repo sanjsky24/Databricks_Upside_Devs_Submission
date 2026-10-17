@@ -30,6 +30,7 @@ from zoneinfo import ZoneInfo
 
 import requests
 
+from . import nea_page
 from .sources import Source
 
 META_URL = "https://api-production.data.gov.sg/v2/public/api/datasets/{id}/metadata"
@@ -163,6 +164,7 @@ class Lander:
             "http_zip": self._land_zip,
             "http_file": self._land_file,
             "seed": self._land_seed,
+            "nea_page": self._land_nea_page,
         }[src.kind]
         return handler(src, force)
 
@@ -224,6 +226,25 @@ class Lander:
 
     def _land_file(self, src, force):
         return self._land_url(src, force, lambda raw: {"data.csv": raw})
+
+    def _land_nea_page(self, src, force):
+        """Capture NEA's cluster page; keep a version only when the cluster list changes."""
+        raw = self._download(src.url)
+        snap = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+        asat_d, rows = nea_page.parse(nea_page.decode(raw), snap)
+        if asat_d is None:
+            raise RuntimeError("NEA cluster page: no 'accurate as at' date found; the page layout may have changed")
+        # Hash the parsed list without the fetch time, so an unchanged list isn't stored twice
+        sha = hashlib.sha256(json.dumps([{k: v for k, v in r.items() if k != "snap"} for r in rows],
+                                        sort_keys=True).encode()).hexdigest()
+        prev = self._latest(src, "page")
+        if prev and prev.get("sha256") == sha and not force:
+            return {"source": src.name, "status": "unchanged", "version": prev["version"]}
+        version = datetime.now(SGT).strftime("%Y%m%dT%H%M%S")
+        ndjson = "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows).encode("utf-8")
+        rec = self._commit(src, "page", version, {"data.ndjson": ndjson, "page.html": raw}, {
+            "url": src.url, "as_at": asat_d, "clusters": len(rows), "sha256": sha, "bytes": len(raw)})
+        return {**rec, "status": "landed"}
 
     def _land_seed(self, src, force):
         path = os.path.join(self.repo_root, src.url)
