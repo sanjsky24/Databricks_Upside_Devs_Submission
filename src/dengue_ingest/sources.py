@@ -130,6 +130,14 @@ SOURCES: list[Source] = [
                     "Parsed from the archived pages; source NEA. Built by scripts/build_wayback_seed.py.",
     ),
 
+    Source(
+        name="osm_road_centroids", kind="seed", group="geo",
+        url="data/seed/osm_road_centroids.csv",
+        description="Centre point of every named road in Singapore (median of its OpenStreetMap segments), used to "
+                    "place archive streets with no HDB block number. (c) OpenStreetMap contributors, ODbL. "
+                    "Built by scripts/build_osm_roads_seed.py.",
+    ),
+
     # ---------------------------------------------------------- Manual seeds
     Source(
         name="wolbachia_release_start_dates", kind="seed", group="vector",

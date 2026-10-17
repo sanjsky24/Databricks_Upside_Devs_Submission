@@ -59,6 +59,23 @@ resources:
           max_retries: 1
           notebook_task:
             notebook_path: ./notebooks/02_bronze_autoloader.py
+        - task_key: silver
+          depends_on:
+            - task_key: bronze
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.silver.id}
+
+  pipelines:
+    # Lakeflow Declarative Pipeline: bronze -> one mapped cluster history (silver_* tables),
+    # with data-quality expectations. Runs as the last step of the job above.
+    silver:
+      name: dengue-silver
+      catalog: ${var.catalog}
+      schema: ${var.schema}
+      serverless: true
+      libraries:
+        - file:
+            path: ./pipelines/silver_clusters.sql
 
 targets:
   # Development mode prefixes the job name with [dev <you>] and pauses its schedule,

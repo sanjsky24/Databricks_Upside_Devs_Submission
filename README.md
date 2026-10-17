@@ -41,6 +41,7 @@ repo seed CSV   ┘                                        │
 | `bronze_wolbachia_release_start_dates` | Wolbachia phase/site start dates compiled from NEA pages | [`data/seed/wolbachia_release_start_dates.csv`](data/seed/wolbachia_release_start_dates.csv) |
 | `bronze_wolbachia_zone_start_dates` | Start date for each of the 31 zones in NEA's Wolbachia layer (used by the model) | [`data/seed/wolbachia_zone_start_dates.csv`](data/seed/wolbachia_zone_start_dates.csv) |
 | `bronze_cda_weekly_dengue` | Weekly national dengue cases 2023–2026 from CDA bulletin PDFs | [`data/seed/cda_weekly_dengue_2023_2026.csv`](data/seed/cda_weekly_dengue_2023_2026.csv) |
+| `bronze_osm_road_centroids` | Centre point of every named road (OpenStreetMap), to place streets with no block number | [`data/seed/osm_road_centroids.csv`](data/seed/osm_road_centroids.csv) |
 
 The full registry lives in [`src/dengue_ingest/sources.py`](src/dengue_ingest/sources.py); add a row there to ingest another dataset.
 
@@ -105,3 +106,35 @@ locally) for higher rate limits. Without one, the client backs off and retries a
   street counts that don't add up to the cluster total, as printed on NEA's page. To rebuild the seed, run
   `python scripts/build_wayback_seed.py <wb_clusters.json>`.
 * **CDA weekly cases**: parsed from the bulletin PDFs; 2025 is missing about 9 weeks.
+* **OpenStreetMap roads**: © OpenStreetMap contributors, ODbL 1.0. Rebuild with `python scripts/build_osm_roads_seed.py`
+  (overpass-api.de; the kumi.systems mirror returned HTTP 500 on 17 Oct 2026).
+
+## Step 2 – Silver: one mapped cluster history (Lakeflow Declarative Pipeline)
+
+[`pipelines/silver_clusters.sql`](pipelines/silver_clusters.sql) runs as the last task of the daily job and turns the
+bronze tables into one cluster history from 2015 to today, every cluster placed on the map:
+
+```
+sgcharts 2015-07 → 2020-11 (lat/lon given) ─┐
+Internet Archive 2021 → 2026-09 (streets) ──┼─► silver_cluster_points ─► silver_clusters (area, alert, active)
+NEA live layer, daily from 15 Oct 2026 ─────┘        ▲
+HDB blocks + OpenStreetMap roads ─► silver_street_locations
+URA planning areas, Wolbachia zones + start dates ─► silver_planning_areas, silver_wolbachia_zones, silver_hdb_blocks
+```
+
+| Table | One row per | Notes |
+|---|---|---|
+| `silver_planning_areas` | URA 2019 planning area (55) | shapes repaired with `st_buffer(g, 0)` (5 were slightly invalid; areas unchanged) |
+| `silver_wolbachia_zones` | NEA release zone (31) | with `start_date` and `confidence` |
+| `silver_hdb_blocks` | residential HDB block (10,270; 94.9% of homes) | coordinates, homes, planning area, H3 cell, earliest Wolbachia start covering it |
+| `silver_street_locations` | street named in the archive lists (9,226) | `method`: block (63%), road (35%), road_exp, none (161 streets) |
+| `silver_cluster_points` | address / street / live polygon in a cluster list | planning area, SVY21 x/y, H3 res-9 cell, Wolbachia zone |
+| `silver_clusters` | cluster × list date | `planning_area` = area with most of its cases; `alert` red (10+) / yellow; `is_active` |
+| `silver_source_agreement` | date covered by 2+ archives | sgcharts, Internet Archive and *Scientific Data* agree case-for-case on all 19 shared dates |
+
+Spatial work uses Databricks' built-in `st_*` and `h3_*` SQL functions. Quality rules (pipeline expectations) drop
+rows with no cases or no planning area, and record (without dropping) streets that couldn't be placed, clusters
+with under half their cases placed, and any disagreement between archives; see the pipeline's data-quality tab.
+
+Checked against the prototype: 314 archived list dates, 17,750 active clusters, 99% of archive cases placed, 67% of
+HDB homes in today's Wolbachia zones, and the same share of cases inside those zones by period (2015–16 67% … 2025 20%).
