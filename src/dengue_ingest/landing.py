@@ -201,9 +201,13 @@ class Lander:
         return {**rec, "status": "landed"}
 
     def _land_url(self, src, force, to_files):
+        prev = self._latest(src, "file")
+        if prev and not force:
+            # sgcharts and Figshare are frozen archives: fetch once, then never again, so an
+            # outage on their side (Figshare returned HTTP 500 on 19 Oct 2026) can't stop the daily run
+            return {"source": src.name, "status": "unchanged", "version": prev["version"]}
         raw = self._download(src.url)
         sha = hashlib.sha256(raw).hexdigest()
-        prev = self._latest(src, "file")
         if prev and prev.get("sha256") == sha and not force:
             return {"source": src.name, "status": "unchanged", "version": prev["version"]}
         version = datetime.now(SGT).strftime("%Y%m%dT%H%M%S")

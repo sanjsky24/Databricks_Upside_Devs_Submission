@@ -65,6 +65,29 @@ resources:
           pipeline_task:
             pipeline_id: ${resources.pipelines.silver.id}
 
+    # Trains and tests the models (MLflow), then appends a forecast for all 55 areas to the
+    # append-only gold_sealed_forecasts table. Run by hand for now; refuses to lock the same
+    # NEA list twice.
+    dengue_lock_forecast:
+      name: dengue-lock-forecast
+      max_concurrent_runs: 1
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: schema
+          default: ${var.schema}
+        - name: git_commit
+          default: ${bundle.git.commit}
+        - name: allow_relock
+          default: "false"
+      tasks:
+        - task_key: lock_forecast
+          notebook_task:
+            notebook_path: ./notebooks/03_lock_forecast.py
+
   pipelines:
     # Lakeflow Declarative Pipeline: bronze -> one mapped cluster history (silver_* tables)
     # -> the area-by-fortnight model table (gold_*), with data-quality expectations.
