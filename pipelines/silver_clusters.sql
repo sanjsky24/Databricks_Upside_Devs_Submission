@@ -1,4 +1,4 @@
--- Silver layer: one clean, mapped dengue cluster history, 2015 -> today.
+-- Silver layer: one clean, mapped dengue cluster history, Nov 2013 -> today.
 --
 -- Lakeflow Declarative Pipeline (SQL). Reads the bronze tables in the pipeline's own
 -- catalog/schema and publishes:
@@ -11,11 +11,16 @@
 --   silver_clusters          one row per cluster per list date, assigned to a planning area
 --   silver_source_agreement  case totals from each archive on dates they both cover
 --
--- History = sgcharts (Jul 2015 - Nov 2020) -> Internet Archive captures of NEA's page
+-- History = sgcharts (Nov 2013 - Nov 2020) -> Internet Archive captures of NEA's page
 -- (after Nov 2020) -> our own captures of NEA's page (from 17 Oct 2026; same fields as the
 -- archive, dated by the page's "as at" date). NEA's data.gov.sg layer (captured from
 -- 15 Oct 2026) fills only the days before the first page capture: it has no "recent
 -- cases" count and runs a day or two behind the page. Source of all cluster lists: NEA.
+--
+-- sgcharts flags its coordinates before Jul 2015 as wrong, so those lists (Nov 2013 -
+-- Apr 2015, the 2013-14 outbreak years) are placed by street name and block, like the
+-- Internet Archive lists. Lists before 25 Nov 2013 are left out: they have no "recent
+-- cases" count (-1).
 --
 -- Geometry note: a few URA and NEA polygons are slightly invalid (self-touching rings);
 -- st_buffer(g, 0) repairs them without changing their area. Coordinates are WGS84
@@ -185,18 +190,20 @@ LEFT JOIN wol w ON w.prop_key = m.prop_key;
 CREATE OR REFRESH MATERIALIZED VIEW silver_street_locations (
   CONSTRAINT located EXPECT (method != 'none')
 )
-COMMENT 'Each street named in the Internet Archive and NEA page cluster lists with its map position and how it was found (block / road / road_exp / none). Road centres (c) OpenStreetMap contributors, ODbL.'
+COMMENT 'Each street named in the Internet Archive and NEA page cluster lists, and in sgcharts lists whose coordinates are flagged wrong (2013-15), with its map position and how it was found (block / road / road_exp / none). Road centres (c) OpenStreetMap contributors, ODbL.'
 AS
 WITH streets AS (
   SELECT s.street FROM bronze_nea_dengue_clusters_wayback_latest LATERAL VIEW explode(streets) t AS s
   UNION
   SELECT s.street FROM bronze_nea_dengue_cluster_page LATERAL VIEW explode(streets) t AS s
+  UNION
+  SELECT street_address FROM bronze_sgcharts_dengue_clusters_2013_2020_latest WHERE latlon_flagged_incorrect
 ),
 parsed AS (
   SELECT
     street,
-    nullif(upper(regexp_extract(street, r'^(.*?)\s*\((?:Blk|Block)\s*([0-9A-Za-z]+)\)', 2)), '') AS blk,
-    trim(regexp_replace(lower(replace(regexp_extract(street, r'^(.*?)\s*\((?:Blk|Block)\s*([0-9A-Za-z]+)\)', 1), '''', '')), '[^a-z0-9 ]', '')) AS blk_street_norm,
+    nullif(upper(regexp_extract(street, r'(?i)^(.*?)\s*\((?:Blk|Block)\s*([0-9A-Za-z]+)\)', 2)), '') AS blk,
+    trim(regexp_replace(lower(replace(regexp_extract(street, r'(?i)^(.*?)\s*\((?:Blk|Block)\s*([0-9A-Za-z]+)\)', 1), '''', '')), '[^a-z0-9 ]', '')) AS blk_street_norm,
     trim(regexp_replace(lower(replace(regexp_replace(street, r'\s*\(.*?\)', ''), '''', '')), '[^a-z0-9 ]', '')) AS road_norm
   FROM streets
 ),
@@ -236,7 +243,7 @@ CREATE OR REFRESH MATERIALIZED VIEW silver_cluster_points (
   CONSTRAINT inside_singapore EXPECT (lon IS NULL OR (lon BETWEEN 103.6 AND 104.1 AND lat BETWEEN 1.15 AND 1.48)),
   CONSTRAINT located EXPECT (planning_area IS NOT NULL)
 )
-COMMENT 'Every location in every NEA cluster list, 2015 -> today: sgcharts addresses (lat/lon given), Internet Archive and NEA page streets (geocoded), data.gov.sg polygons (centroid). One list per date; each source only after the previous one ends: sgcharts, Internet Archive, data.gov.sg layer (until the first page capture), NEA page.'
+COMMENT 'Every location in every NEA cluster list, Nov 2013 -> today: sgcharts addresses (lat/lon given from Jul 2015; geocoded by street before, where sgcharts flags its lat/lon wrong), Internet Archive and NEA page streets (geocoded), data.gov.sg polygons (centroid). One list per date; each source only after the previous one ends: sgcharts, Internet Archive, data.gov.sg layer (until the first page capture), NEA page.'
 AS
 WITH sg AS (
   SELECT
@@ -251,6 +258,21 @@ WITH sg AS (
     longitude AS lon, latitude AS lat, 'latlon' AS locate_method
   FROM bronze_sgcharts_dengue_clusters_2013_2020_latest
   WHERE NOT latlon_flagged_incorrect
+),
+sg_early AS (
+  SELECT
+    g.snapshot_date, 'sgcharts' AS source,
+    concat('sgcharts|', CAST(g.snapshot_date AS STRING), '|', CAST(g.cluster_number AS STRING)) AS cluster_id,
+    CAST(NULL AS STRING) AS locality,
+    g.street_address AS location_text,
+    g.number_of_cases AS cases,
+    g.recent_cases_in_cluster AS recent,
+    g.total_cases_in_cluster AS total,
+    CAST(NULL AS STRING) AS alert,
+    l.lon, l.lat, l.method AS locate_method
+  FROM bronze_sgcharts_dengue_clusters_2013_2020_latest g
+  LEFT JOIN silver_street_locations l ON l.street = g.street_address
+  WHERE g.latlon_flagged_incorrect AND g.recent_cases_in_cluster >= 0
 ),
 sg_last AS (SELECT max(snapshot_date) AS d FROM sg),
 wb_caps AS (
@@ -317,7 +339,8 @@ live AS (
     AND to_date(_version_ts_sgt) < coalesce((SELECT d FROM page_first), DATE'9999-12-31')
 ),
 pts AS (
-  SELECT * FROM sg UNION ALL SELECT * FROM wb UNION ALL SELECT * FROM live UNION ALL SELECT * FROM page
+  SELECT * FROM sg_early UNION ALL SELECT * FROM sg UNION ALL SELECT * FROM wb UNION ALL SELECT * FROM live
+  UNION ALL SELECT * FROM page
 ),
 places AS (
   -- look up planning area and Wolbachia zone once per distinct position

@@ -92,7 +92,8 @@ locally) for higher rate limits. Without one, the client backs off and retries a
 ### Notes on the data
 
 * **SGCharts**: snapshots before Jul 2015 have `latlon_flagged_incorrect = true` (SGCharts flags their
-  coordinates as wrong; counts and addresses are fine). `recent_cases_in_cluster = -1` before Dec 2013.
+  coordinates as wrong; counts and addresses are fine, so silver places those by street and block).
+  `recent_cases_in_cluster = -1` before 25 Nov 2013; silver starts there.
   `cluster_number` is not a stable ID across snapshots.
 * **Dengue Cases by Region** and **MOH weekly** datasets stopped updating on data.gov.sg in 2024 (MOH bulletin coverage ends 2022).
 * **Wolbachia seed**: dates come from NEA's *Progress of Project Wolbachia* timeline (Jun 2022) and NEA
@@ -114,10 +115,11 @@ locally) for higher rate limits. Without one, the client backs off and retries a
 ## Step 2 – Silver: one mapped cluster history (Lakeflow Declarative Pipeline)
 
 [`pipelines/silver_clusters.sql`](pipelines/silver_clusters.sql) runs as the last task of the daily job and turns the
-bronze tables into one cluster history from 2015 to today, every cluster placed on the map:
+bronze tables into one cluster history from Nov 2013 to today, every cluster placed on the map:
 
 ```
-sgcharts 2015-07 → 2020-11 (lat/lon given) ─┐
+sgcharts 2013-11 → 2015-04 (streets) ───────┐
+sgcharts 2015-07 → 2020-11 (lat/lon given) ─┤
 Internet Archive 2021 → 2026-09 (streets) ──┼─► silver_cluster_points ─► silver_clusters (area, alert, active)
 NEA page, every run from 17 Oct 2026 ───────┤        ▲
 (data.gov.sg layer only before that) ───────┘        │

@@ -3,12 +3,14 @@
 Plain pandas + scikit-learn so the same code runs in a Databricks notebook and on a laptop.
 Input is the gold_area_fortnight table (one row per planning area per list date).
 
-Honest evaluation:
-  every choice (feature sets, decision thresholds) is made on the development years only, with an
-  expanding-window backtest: predict 2018 from 2015-17, 2019 from 2015-18, 2020 from 2015-19 and
-  2022 from 2015-20 (483 new clusters and 1,061 High outcomes, instead of the 42 new clusters
-  2022-23 alone gave) -> retrain on 2015-2023 -> test ONCE on 2024-26 -> retrain on every labelled
-  row for the live forecast.
+Honest evaluation, all of it rolling: a year is always predicted by models trained only on lists
+whose outcome was known before 1 Jan of that year.
+  1. choose feature sets and decision thresholds on 2017, 2018 and 2019 (history from Nov 2013);
+  2. with those choices fixed, test every year from 2020 (2020, 2022, 2024, 2025, 2026; 2021 and
+     2023 have no list with a known outcome), against the baselines with 90% intervals;
+  3. retrain on every labelled row for the live forecast.
+2024-26 alone (19 lists with an outcome) is too few to judge a model on, so it is reported as part
+of the 2020-26 test, not on its own.
 
 The risk-level model predicts High when P(High) clears a threshold tuned on the backtest for High
 F1, instead of class-weighting + most-likely class, which bought recall with precision.
@@ -49,26 +51,33 @@ NEW_SETS = {
     "+ weather": ["lhist_avg", "cls_recent", "nbr", "du", "wol_dyn", "nat", "ms", "mc"] + WEATHER,
 }
 
-TEST_START = "2024-01-01"
-BACKTEST_YEARS = (2018, 2019, 2020, 2022)  # 2021 and 2023 have no labelled lists (thin archive years)
+CHOOSE_YEARS = (2017, 2018, 2019)
+TEST_YEARS = tuple(range(2020, 2027))
 LEVELS = {0: "Low", 1: "Medium", 2: "High"}
 
 
-def split(df):
-    """(development 2015-2023, test 2024-26) labelled rows."""
+def labelled(df):
     d = df[df.y.notna()].copy()
     d["y"] = d.y.astype(int)
-    t = pd.to_datetime(d.snapshot_date)
-    return d[t < TEST_START], d[t >= TEST_START]
+    d["snapshot_date"] = pd.to_datetime(d.snapshot_date)
+    d["next_date"] = pd.to_datetime(d.next_date)
+    return d
 
 
-def backtest(dev, fit_score):
-    """Out-of-fold scores on the development years: each year predicted by a model fit on the years before it."""
-    year = pd.to_datetime(dev.snapshot_date).dt.year
+def development(d):
+    """Labelled rows whose outcome was known before the first test year."""
+    return d[d.next_date < f"{TEST_YEARS[0]}-01-01"]
+
+
+def rolling(d, years, fit_score):
+    """Predict each year with fit_score(train, year_rows) -> {column: values}, where train holds only
+    lists whose outcome (next_date) was known before 1 Jan of that year."""
     parts = []
-    for y in BACKTEST_YEARS:
-        tr, va = dev[year < y], dev[year == y]
-        parts.append(va.assign(score=fit_score(tr, va)))
+    for y in years:
+        start, end = pd.Timestamp(f"{y}-01-01"), pd.Timestamp(f"{y + 1}-01-01")
+        tr, te = d[d.next_date < start], d[(d.snapshot_date >= start) & (d.snapshot_date < end)]
+        if len(te) and len(tr):
+            parts.append(te.assign(test_year=y, **fit_score(tr, te)))
     return pd.concat(parts)
 
 
@@ -87,13 +96,13 @@ def best_threshold(y, s):
 
 
 def boot_diff(test, metric, a, b, n=2000, seed=0):
-    """90% interval of metric(a) - metric(b), resampling test list dates with replacement."""
-    dates = test.snapshot_date.unique()
-    by = {d: g for d, g in test.groupby("snapshot_date")}
+    """90% interval of metric(a) - metric(b), resampling test list dates with replacement.
+    A date drawn twice counts as two lists (otherwise caught@5 would pick 5 from the merged rows)."""
+    lists = [g for _, g in test.groupby("snapshot_date")]
     rng = np.random.RandomState(seed)
     out = []
     for _ in range(n):
-        s = pd.concat([by[d] for d in rng.choice(dates, len(dates))])
+        s = pd.concat([lists[i].assign(snapshot_date=k) for k, i in enumerate(rng.randint(len(lists), size=len(lists)))])
         out.append(metric(s, a) - metric(s, b))
     return tuple(np.percentile(out, [5, 95]))
 
@@ -114,12 +123,17 @@ def to_level(p, t_high, t_any):
     return np.where(p[:, 2] >= t_high, 2, np.where(p[:, 1] + p[:, 2] >= t_any, 1, 0))
 
 
+def _proba(model, x):
+    p = model.predict_proba(x)
+    return {"p_low": p[:, 0], "p_medium": p[:, 1], "p_high": p[:, 2]}
+
+
 def choose_lmh(dev):
-    """Pick the risk-level feature set and both thresholds on the backtest (ties go to the smaller set)."""
+    """Pick the risk-level feature set and both thresholds on the CHOOSE_YEARS backtest (ties go to the smaller set)."""
     rows = []
     for name, feats in LMH_SETS.items():
-        o = backtest(dev, lambda tr, va, f=feats: list(fit_lmh(tr, f).predict_proba(va[f])))
-        p = np.vstack(o.score.values)
+        o = rolling(dev, CHOOSE_YEARS, lambda tr, va, f=feats: _proba(fit_lmh(tr, f), va[f]))
+        p = o[["p_low", "p_medium", "p_high"]].values
         hi = o.y.values == 2
         t_high = best_threshold(hi, p[:, 2])
         rest = p[:, 2] < t_high   # Medium is decided among areas not called High
@@ -141,20 +155,25 @@ def _high_f1(d, col):
     return prf(d.y.values == 2, d[col].values == 2)[2]
 
 
-def lmh_scores(train, test, features, t_high, t_any):
-    """High precision/recall/F1, macro-F1 and top-10 case capture for the model and its baselines."""
-    lr, gb = fit_lmh(train, features), fit_lmh_gbm(train, features)
-    old = make_pipeline(StandardScaler(), LogisticRegression(max_iter=3000, class_weight="balanced")) \
-        .fit(train[LMH_FEATURES], train.y)
-    p_lr, p_gb = lr.predict_proba(test[features]), gb.predict_proba(test[features])
+def lmh_scores(d, features, t_high, t_any):
+    """Rolling test from 2020: High precision/recall/F1, macro-F1 and top-10 case capture for the model
+    and its baselines; 90% interval of High F1 minus "same as now"; and the scored test rows."""
+    def fit_score(tr, te):
+        lr, gb = fit_lmh(tr, features), fit_lmh_gbm(tr, features)
+        old = make_pipeline(StandardScaler(), LogisticRegression(max_iter=3000, class_weight="balanced")) \
+            .fit(tr[LMH_FEATURES], tr.y)
+        p_lr, p_gb = lr.predict_proba(te[features]), gb.predict_proba(te[features])
+        return {"pred_lr": to_level(p_lr, t_high, t_any), "s_lr": p_lr @ np.arange(3), "p_high": p_lr[:, 2],
+                "pred_gb": to_level(p_gb, t_high, t_any), "s_gb": p_gb @ np.arange(3),
+                "pred_old": old.predict(te[LMH_FEATURES]), "s_old": old.predict_proba(te[LMH_FEATURES]) @ np.arange(3)}
+    test = rolling(d, TEST_YEARS, fit_score)
     preds = {
         "Same as now": (test.cls.values, test.lrecent.values + test.cls.values),
         "Recent-history average": (np.rint(test.cls_last3).astype(int).values,
                                    test.cls_last3.values + 0.01 * test.lhist.values),
-        "Previous model (balanced, most likely level)": (old.predict(test[LMH_FEATURES]),
-                                                         old.predict_proba(test[LMH_FEATURES]) @ np.arange(3)),
-        "Logistic regression": (to_level(p_lr, t_high, t_any), p_lr @ np.arange(3)),
-        "Gradient boosting": (to_level(p_gb, t_high, t_any), p_gb @ np.arange(3)),
+        "Previous model (balanced, most likely level)": (test.pred_old.values, test.s_old.values),
+        "Logistic regression": (test.pred_lr.values, test.s_lr.values),
+        "Gradient boosting": (test.pred_gb.values, test.s_gb.values),
     }
     rows = []
     y = test.y.values
@@ -164,9 +183,9 @@ def lmh_scores(train, test, features, t_high, t_any):
         pr, rc, f1 = prf(y == 2, p == 2)
         rows.append({"model": name, "high_precision": pr, "high_recall": rc, "high_f1": f1,
                      "macro_f1": float(f1_score(y, p, average="macro")), "top10_capture": float(np.mean(cap))})
-    t = test.assign(model=preds["Logistic regression"][0], same=test.cls.values)
+    t = test.assign(model=test.pred_lr.values, same=test.cls.values)
     lo, hi = boot_diff(t, _high_f1, "model", "same")
-    return pd.DataFrame(rows), (lo, hi)
+    return pd.DataFrame(rows), (lo, hi), t
 
 
 # ------------------------------------------------------------------ new clusters
@@ -197,14 +216,14 @@ def fit_new(train, features):
 
 
 def choose_new_set(dev):
-    """Pick the feature set with the best backtest caught@5; ties (to 3 decimals) go to the smaller set."""
+    """Pick the feature set with the best CHOOSE_YEARS backtest caught@5; ties (to 3 decimals) go to the smaller set."""
     c = clear(dev)
     rows = []
     for name, feats in NEW_SETS.items():
-        o = backtest(c, lambda tr, va, f=feats: fit_new(tr, f).predict_proba(va[f])[:, 1])
+        o = rolling(c, CHOOSE_YEARS, lambda tr, va, f=feats: {"score": fit_new(tr, f).predict_proba(va[f])[:, 1]})
         rows.append({"name": name, "caught_at_5": caught_at_5(o, o.score.values),
                      "precision_at_5": precision_at_5(o, o.score.values)})
-    o = backtest(c, lambda tr, va: va.lhist.values)
+    o = rolling(c, CHOOSE_YEARS, lambda tr, va: {"score": va.lhist.values})
     v = pd.DataFrame(rows)
     best = v.caught_at_5.round(3).max()
     choice = v[v.caught_at_5.round(3) == best].iloc[0]["name"]
@@ -213,30 +232,50 @@ def choose_new_set(dev):
     return choice, v
 
 
-def new_scores(train, test, features):
-    """caught@5, precision@5, ROC-AUC, PR-AUC for the chosen set, every other set and the simple baselines."""
-    te = clear(test)
+def new_scores(d, new_set):
+    """Rolling test from 2020: caught@5, precision@5, ROC-AUC, PR-AUC for every feature set (the chosen
+    one is new_set), gradient boosting and the simple baselines; 90% interval of caught@5 minus
+    "past clusters here"; and the scored test rows (clear areas only)."""
+    features = NEW_SETS[new_set]
+
+    def fit_score(tr, te):
+        out = {f"s|{name}": fit_new(tr, feats).predict_proba(te[feats])[:, 1] for name, feats in NEW_SETS.items()}
+        c = clear(tr)
+        gb = HistGradientBoostingClassifier(max_iter=300, learning_rate=0.05, max_depth=3, min_samples_leaf=30,
+                                            random_state=0).fit(c[features], c.e)
+        out["s|gb"] = gb.predict_proba(te[features])[:, 1]
+        return out
+    te = rolling(clear(d), TEST_YEARS, fit_score)
 
     def row(name, s):
         return (name, caught_at_5(te, s), precision_at_5(te, s), roc_auc_score(te.e, s), average_precision_score(te.e, s))
-    # chance = expected value of 5 random picks (one random draw varied from 7% to 15% between data versions):
-    # each new cluster is picked with probability min(5, clear areas) / clear areas
+    # chance = expected value of 5 random picks: each new cluster is picked with probability
+    # min(5, clear areas) / clear areas
     g = te.groupby("snapshot_date").e.agg(["size", "sum"])
     rows = [("Chance (expected)", float((g["sum"] * g["size"].clip(upper=5) / g["size"]).sum() / g["sum"].sum()),
              float(te.e.mean()), 0.5, float(te.e.mean())),
             row("Most HDB homes", te.du.values),
             row("Past clusters here", te.lhist.values)]
-    for name, feats in NEW_SETS.items():
-        rows.append(row("Logistic: " + name, fit_new(train, feats).predict_proba(te[feats])[:, 1]))
-    c = clear(train)
-    gb = HistGradientBoostingClassifier(max_iter=300, learning_rate=0.05, max_depth=3, min_samples_leaf=30,
-                                        random_state=0).fit(c[features], c.e)
-    rows.append(row("Gradient boosting: chosen set", gb.predict_proba(te[features])[:, 1]))
+    for name in NEW_SETS:
+        rows.append(row("Logistic: " + name, te[f"s|{name}"].values))
+    rows.append(row("Gradient boosting: chosen set", te["s|gb"].values))
     out = pd.DataFrame(rows, columns=["score", "caught_at_5", "precision_at_5", "roc_auc", "pr_auc"]).assign(
         n_new=int(te.e.sum()), n_clear=len(te))
-    t = te.assign(model=fit_new(train, features).predict_proba(te[features])[:, 1], past=te.lhist.values)
-    lo, hi = boot_diff(t, lambda d, col: caught_at_5(d, d[col].values), "model", "past")
-    return out, (lo, hi)
+    t = te.assign(model=te[f"s|{new_set}"].values, past=te.lhist.values)
+    lo, hi = boot_diff(t, lambda x, col: caught_at_5(x, x[col].values), "model", "past")
+    return out, (lo, hi), t
+
+
+def by_year(lmh_test, new_test):
+    """Model vs baseline for each test year (from the rows lmh_scores and new_scores return)."""
+    rows = []
+    for y, t in lmh_test.groupby("test_year"):
+        n = new_test[new_test.test_year == y]
+        rows.append({"year": y, "lists": t.snapshot_date.nunique(), "high_outcomes": int((t.y == 2).sum()),
+                     "high_f1": _high_f1(t, "model"), "same_as_now_high_f1": _high_f1(t, "same"),
+                     "new_clusters": int(n.e.sum()), "caught_at_5": caught_at_5(n, n.model.values),
+                     "past_clusters_caught_at_5": caught_at_5(n, n.past.values)})
+    return pd.DataFrame(rows)
 
 
 # ------------------------------------------------------------------ live forecast

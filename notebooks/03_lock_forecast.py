@@ -2,10 +2,9 @@
 # MAGIC %md
 # MAGIC # 03 · Train, test and lock a forecast
 # MAGIC 1. Reads `gold_area_fortnight`.
-# MAGIC 2. **Honest test:** chooses feature sets (with and without weather) and decision thresholds on a 2015–23
-# MAGIC    backtest (predict 2018, 2019, 2020 and 2022 each from the years before), retrains on 2015–23 and tests
-# MAGIC    once on 2024–26, against the baselines, with 90% bootstrap intervals. Everything goes to the MLflow
-# MAGIC    experiment `dengueradar`.
+# MAGIC 2. **Honest test:** chooses feature sets (with and without weather) and decision thresholds on a backtest of
+# MAGIC    2017, 2018 and 2019, then tests every year from 2020, each predicted only from the years before it, against
+# MAGIC    the baselines, with 90% bootstrap intervals. Everything goes to the MLflow experiment `dengueradar`.
 # MAGIC 3. Retrains both models on every labelled row and registers them in Unity Catalog.
 # MAGIC 4. Scores all 55 planning areas on the newest NEA list and **appends** them to `gold_sealed_forecasts`, an
 # MAGIC    append-only Delta table (`delta.appendOnly = true`: rows can be added, never changed or deleted).
@@ -47,8 +46,8 @@ import pandas as pd
 
 warnings.filterwarnings("ignore")
 sys.path.insert(0, os.path.abspath("../src"))
-from dengue_model.forecast import (LMH_SETS, NEW_SETS, choose_lmh, choose_new_set, fit_lmh, fit_new, forecast,
-                                   lmh_scores, new_scores, split)
+from dengue_model.forecast import (CHOOSE_YEARS, LMH_SETS, NEW_SETS, TEST_YEARS, by_year, choose_lmh, choose_new_set,
+                                   development, fit_lmh, fit_new, forecast, labelled, lmh_scores, new_scores)
 
 df = spark.table(f"{catalog}.{schema}.gold_area_fortnight").toPandas()
 basis = df.snapshot_date.max()
@@ -66,11 +65,13 @@ def key(s):
 user = spark.sql("SELECT current_user()").first()[0]
 mlflow.set_experiment(f"/Users/{user}/dengueradar")
 
-dev, test = split(df)
+lab = labelled(df)
+dev = development(lab)
 with mlflow.start_run(run_name=f"forecast {basis}") as run:
     mlflow.log_params({"basis_date": str(basis), "basis_source": basis_source, "git_commit": git_commit,
-                       "choose_on": "backtest 2018, 2019, 2020, 2022 (each from the years before)",
-                       "train": "2015-2023", "test": "2024-2026", "rows_dev": len(dev), "rows_test": len(test)})
+                       "choose_on": f"backtest {', '.join(map(str, CHOOSE_YEARS))} (each from the years before)",
+                       "test": f"every year {TEST_YEARS[0]}-{TEST_YEARS[-1]}, each from the years before",
+                       "first_list": str(lab.snapshot_date.min().date()), "rows_labelled": len(lab)})
 
     # choose feature sets and thresholds on the development years only
     lmh_set, t_high, t_any, v_lmh = choose_lmh(dev)
@@ -82,10 +83,13 @@ with mlflow.start_run(run_name=f"forecast {basis}") as run:
     for r in v_new.itertuples():
         mlflow.log_metric(key(f"backtest caught_at_5 {r.name}"), r.caught_at_5)
 
-    # one honest test on 2024-26, trained on everything before it
+    # rolling test of every year from 2020 with those choices fixed
     lmh_feats, new_feats = LMH_SETS[lmh_set], NEW_SETS[new_set]
-    lmh, lmh_ci = lmh_scores(dev, test, lmh_feats, t_high, t_any)
-    new, new_ci = new_scores(dev, test, new_feats)
+    lmh, lmh_ci, lmh_test = lmh_scores(lab, lmh_feats, t_high, t_any)
+    new, new_ci, new_test = new_scores(lab, new_set)
+    years = by_year(lmh_test, new_test)
+    mlflow.log_params({"test_lists": lmh_test.snapshot_date.nunique(), "test_high_outcomes": int((lmh_test.y == 2).sum()),
+                       "test_new_clusters": int(new_test.e.sum())})
     for r in lmh.itertuples():
         for m in ["high_precision", "high_recall", "high_f1", "macro_f1", "top10_capture"]:
             mlflow.log_metric(key(f"test {m} {r.model}"), getattr(r, m))
@@ -95,25 +99,26 @@ with mlflow.start_run(run_name=f"forecast {basis}") as run:
     mlflow.log_metrics({"test high_f1 minus same-as-now p05": lmh_ci[0], "test high_f1 minus same-as-now p95": lmh_ci[1],
                         "test caught_at_5 minus past-clusters p05": new_ci[0],
                         "test caught_at_5 minus past-clusters p95": new_ci[1]})
-    mlflow.log_text(lmh.to_csv(index=False), "test_2024_26_risk_level.csv")
-    mlflow.log_text(new.to_csv(index=False), "test_2024_26_new_clusters.csv")
+    mlflow.log_text(lmh.to_csv(index=False), "test_2020_26_risk_level.csv")
+    mlflow.log_text(new.to_csv(index=False), "test_2020_26_new_clusters.csv")
+    mlflow.log_text(years.to_csv(index=False), "test_2020_26_by_year.csv")
     mlflow.log_text(v_lmh.to_csv(index=False), "backtest_risk_level_feature_sets.csv")
     mlflow.log_text(v_new.to_csv(index=False), "backtest_new_cluster_feature_sets.csv")
 
     # final models: every labelled row
-    labelled = pd.concat([dev, test])
-    lmh_model = fit_lmh(labelled, lmh_feats)
-    new_model = fit_new(labelled, new_feats)
-    mlflow.sklearn.log_model(lmh_model, "area_risk_level", input_example=labelled[lmh_feats].head(5))
-    mlflow.sklearn.log_model(new_model, "new_cluster_score", input_example=labelled[new_feats].head(5))
+    lmh_model = fit_lmh(lab, lmh_feats)
+    new_model = fit_new(lab, new_feats)
+    mlflow.sklearn.log_model(lmh_model, "area_risk_level", input_example=lab[lmh_feats].head(5))
+    mlflow.sklearn.log_model(new_model, "new_cluster_score", input_example=lab[new_feats].head(5))
     run_id = run.info.run_id
 
 display(v_lmh.round(3))
 display(v_new.round(3))
 display(lmh.round(3))
 display(new.round(3))
+display(years.round(3))
 print(f"chosen on the backtest: risk level = {lmh_set} (High if P(High) >= {t_high:.3f}), new clusters = {new_set}")
-print(f"test 2024-26, 90% interval: High F1 minus same-as-now [{lmh_ci[0]:+.3f}, {lmh_ci[1]:+.3f}]; "
+print(f"test {TEST_YEARS[0]}-26, 90% interval: High F1 minus same-as-now [{lmh_ci[0]:+.3f}, {lmh_ci[1]:+.3f}]; "
       f"caught@5 minus past clusters [{new_ci[0]:+.3f}, {new_ci[1]:+.3f}]")
 
 # COMMAND ----------
