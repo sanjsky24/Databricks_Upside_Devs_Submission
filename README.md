@@ -156,7 +156,10 @@ weeks later. It is what the model trains on and what the weekly forecast scores.
 * **Features**: today's level, recent and total cases, number of clusters, past cases here (each list weighted by
   `exp(-days/180)`), average level over the last 3 lists, recent cases in neighbouring areas (`gold_area_neighbours`,
   boundaries within 50 m), national recent cases, HDB homes, share of homes in Wolbachia zones started ≥60 days
-  earlier, season.
+  earlier, season, and national weather known that day (`gold_weather_monthly`: rainfall, rain days, mean and
+  mean-daily-max temperature, humidity at Changi, as anomalies vs the 1982–2014 average for the calendar month;
+  the latest month that ended ≥15 days before the list date, since NEA publishes about a week after month end,
+  plus the 3 months up to it).
 * **Label `y`**: the level at the first list ≥14 days later, kept only if that list is 14–35 days away.
   A **new cluster** is `cls = 0` today and `y > 0`.
 * Daily lists from our own captures are thinned to every 4th day back from the newest, matching the twice-weekly

@@ -16,6 +16,9 @@
 -- Lists since our own captures began (daily) are thinned to every 4th day counting back
 -- from the newest list, so the history features see roughly the twice-weekly rhythm the
 -- model was trained on (sgcharts, 2015-20).
+--
+-- Weather (gold_weather_monthly) is national and monthly, so it is the same for every area
+-- on a list date: it can shift overall risk but cannot change which areas rank highest.
 
 
 CREATE OR REFRESH MATERIALIZED VIEW gold_area_neighbours
@@ -27,6 +30,57 @@ JOIN silver_planning_areas b
   ON a.planning_area <> b.planning_area
  AND st_intersects(st_buffer(st_transform(st_geomfromgeojson(a.geometry_geojson), 3414), 50),
                    st_transform(st_geomfromgeojson(b.geometry_geojson), 3414));
+
+
+-- National monthly weather from NEA's climate station at Changi (data.gov.sg), one row per
+-- month, with each value's anomaly against the 1982-2014 average for that calendar month
+-- (all of it before the first training list, so the baseline holds no future information).
+CREATE OR REFRESH MATERIALIZED VIEW gold_weather_monthly (
+  CONSTRAINT has_rain_and_temp EXPECT (rain_mm IS NOT NULL AND temp_mean IS NOT NULL)
+)
+COMMENT 'National monthly weather (NEA, Changi) 1982 -> latest published month, with anomalies vs the 1982-2014 average of the same calendar month. NEA publishes a month about a week after it ends.'
+AS
+WITH v AS (
+  -- month may land as a string ("2026-09") or a timestamp; the first 7 characters are the month either way
+  SELECT to_date(concat(left(CAST(month AS STRING), 7), '-01')) AS month, 'rain_mm' AS k, CAST(total_rainfall AS DOUBLE) AS x
+  FROM bronze_weather_rainfall_monthly_total_latest
+  UNION ALL
+  SELECT to_date(concat(left(CAST(month AS STRING), 7), '-01')), 'rain_days', CAST(no_of_rainy_days AS DOUBLE)
+  FROM bronze_weather_rainfall_monthly_rain_days_latest
+  UNION ALL
+  SELECT to_date(concat(left(CAST(month AS STRING), 7), '-01')), 'temp_mean', CAST(mean_temp AS DOUBLE)
+  FROM bronze_weather_temp_monthly_mean_latest
+  UNION ALL
+  SELECT to_date(concat(left(CAST(month AS STRING), 7), '-01')), 'temp_max', CAST(temp_mean_daily_max AS DOUBLE)
+  FROM bronze_weather_temp_monthly_mean_daily_max_latest
+  UNION ALL
+  SELECT to_date(concat(left(CAST(month AS STRING), 7), '-01')), 'rh', CAST(mean_rh AS DOUBLE)
+  FROM bronze_weather_humidity_monthly_mean_latest
+),
+m AS (
+  SELECT month,
+         max(CASE WHEN k = 'rain_mm' THEN x END) AS rain_mm,
+         max(CASE WHEN k = 'rain_days' THEN x END) AS rain_days,
+         max(CASE WHEN k = 'temp_mean' THEN x END) AS temp_mean,
+         max(CASE WHEN k = 'temp_max' THEN x END) AS temp_max,
+         max(CASE WHEN k = 'rh' THEN x END) AS rh
+  FROM v GROUP BY month
+),
+clim AS (
+  SELECT month(month) AS cal_month,
+         avg(rain_mm) AS rain_mm, avg(rain_days) AS rain_days, avg(temp_mean) AS temp_mean,
+         avg(temp_max) AS temp_max, avg(rh) AS rh
+  FROM m WHERE year(month) BETWEEN 1982 AND 2014
+  GROUP BY month(month)
+)
+SELECT
+  m.month, m.rain_mm, m.rain_days, m.temp_mean, m.temp_max, m.rh,
+  m.rain_mm - c.rain_mm AS rain_anom,
+  m.rain_days - c.rain_days AS rain_days_anom,
+  m.temp_mean - c.temp_mean AS temp_anom,
+  m.temp_max - c.temp_max AS tmax_anom,
+  m.rh - c.rh AS rh_anom
+FROM m JOIN clim c ON c.cal_month = month(m.month);
 
 
 CREATE OR REFRESH MATERIALIZED VIEW gold_area_fortnight (
@@ -99,6 +153,25 @@ nxt AS (
   SELECT s.snapshot_date, min(t.snapshot_date) AS next_date
   FROM snaps s JOIN snaps t ON t.snapshot_date >= date_add(s.snapshot_date, 14)
   GROUP BY s.snapshot_date
+),
+wx AS (
+  -- weather known on the list date: the last month that ended at least 15 days earlier
+  -- (NEA published Sep 2026 on 8 Oct), and the 3 months up to it
+  SELECT s.snapshot_date,
+         max(CASE WHEN w.month = add_months(trunc(date_sub(s.snapshot_date, 15), 'MM'), -1) THEN w.rain_mm END) AS rain_mm_1m,
+         max(CASE WHEN w.month = add_months(trunc(date_sub(s.snapshot_date, 15), 'MM'), -1) THEN w.temp_mean END) AS temp_mean_1m,
+         max(CASE WHEN w.month = add_months(trunc(date_sub(s.snapshot_date, 15), 'MM'), -1) THEN w.rain_anom END) AS rain_anom_1m,
+         max(CASE WHEN w.month = add_months(trunc(date_sub(s.snapshot_date, 15), 'MM'), -1) THEN w.tmax_anom END) AS tmax_anom_1m,
+         avg(w.rain_anom) AS rain_anom_3m,
+         avg(w.rain_days_anom) AS rain_days_anom_3m,
+         avg(w.temp_anom) AS temp_anom_3m,
+         avg(w.tmax_anom) AS tmax_anom_3m,
+         avg(w.rh_anom) AS rh_anom_3m
+  FROM snaps s
+  JOIN gold_weather_monthly w
+    ON w.month BETWEEN add_months(trunc(date_sub(s.snapshot_date, 15), 'MM'), -3)
+                   AND add_months(trunc(date_sub(s.snapshot_date, 15), 'MM'), -1)
+  GROUP BY s.snapshot_date
 )
 SELECT
   g.snapshot_date,
@@ -124,6 +197,16 @@ SELECT
   coalesce(p.du_protected / nullif(hm.du, 0), 0) AS wol_dyn,
   sin(2 * pi() * month(g.snapshot_date) / 12) AS ms,
   cos(2 * pi() * month(g.snapshot_date) / 12) AS mc,
+  -- national weather known that day (same for every area on a date; anomalies vs 1982-2014)
+  wx.rain_mm_1m,
+  wx.temp_mean_1m,
+  wx.rain_anom_1m,
+  wx.tmax_anom_1m,
+  wx.rain_anom_3m,
+  wx.rain_days_anom_3m,
+  wx.temp_anom_3m,
+  wx.tmax_anom_3m,
+  wx.rh_anom_3m,
   -- label: about two weeks later
   x.next_date,
   datediff(x.next_date, g.snapshot_date) AS gap_days,
@@ -136,4 +219,5 @@ JOIN nat ON nat.snapshot_date = g.snapshot_date
 LEFT JOIN homes hm ON hm.planning_area = g.planning_area
 LEFT JOIN protected p ON p.snapshot_date = g.snapshot_date AND p.planning_area = g.planning_area
 LEFT JOIN nxt x ON x.snapshot_date = g.snapshot_date
+LEFT JOIN wx ON wx.snapshot_date = g.snapshot_date
 LEFT JOIN grid y ON y.planning_area = g.planning_area AND y.snapshot_date = x.next_date;

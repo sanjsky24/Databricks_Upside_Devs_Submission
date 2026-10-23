@@ -2,8 +2,10 @@
 # MAGIC %md
 # MAGIC # 03 · Train, test and lock a forecast
 # MAGIC 1. Reads `gold_area_fortnight`.
-# MAGIC 2. **Honest test:** trains on 2015–21, picks the new-cluster feature set on 2022–23, retrains on 2015–23 and
-# MAGIC    tests once on 2024–26, against the baselines. Everything goes to the MLflow experiment `dengueradar`.
+# MAGIC 2. **Honest test:** chooses feature sets (with and without weather) and decision thresholds on a 2015–23
+# MAGIC    backtest (predict 2018, 2019, 2020 and 2022 each from the years before), retrains on 2015–23 and tests
+# MAGIC    once on 2024–26, against the baselines, with 90% bootstrap intervals. Everything goes to the MLflow
+# MAGIC    experiment `dengueradar`.
 # MAGIC 3. Retrains both models on every labelled row and registers them in Unity Catalog.
 # MAGIC 4. Scores all 55 planning areas on the newest NEA list and **appends** them to `gold_sealed_forecasts`, an
 # MAGIC    append-only Delta table (`delta.appendOnly = true`: rows can be added, never changed or deleted).
@@ -44,7 +46,7 @@ import pandas as pd
 
 warnings.filterwarnings("ignore")
 sys.path.insert(0, os.path.abspath("../src"))
-from dengue_model.forecast import (LMH_FEATURES, NEW_SETS, choose_new_set, fit_lmh, fit_new, forecast,
+from dengue_model.forecast import (LMH_SETS, NEW_SETS, choose_lmh, choose_new_set, fit_lmh, fit_new, forecast,
                                    lmh_scores, new_scores, split)
 
 df = spark.table(f"{catalog}.{schema}.gold_area_fortnight").toPandas()
@@ -68,44 +70,55 @@ def key(s):
 user = spark.sql("SELECT current_user()").first()[0]
 mlflow.set_experiment(f"/Users/{user}/dengueradar")
 
-train, valid, test = split(df)
+dev, test = split(df)
 with mlflow.start_run(run_name=f"forecast {basis}") as run:
     mlflow.log_params({"basis_date": str(basis), "basis_source": basis_source, "git_commit": git_commit,
-                       "train": "2015-2021", "valid": "2022-2023", "test": "2024-2026",
-                       "rows_train": len(train), "rows_valid": len(valid), "rows_test": len(test)})
+                       "choose_on": "backtest 2018, 2019, 2020, 2022 (each from the years before)",
+                       "train": "2015-2023", "test": "2024-2026", "rows_dev": len(dev), "rows_test": len(test)})
 
-    # choose the new-cluster feature set on the validation years only
-    new_set, v = choose_new_set(train, valid)
-    mlflow.log_param("new_cluster_features", new_set)
-    for r in v.itertuples():
-        mlflow.log_metric(key(f"valid caught_at_5 {r.name}"), r.caught_at_5)
+    # choose feature sets and thresholds on the development years only
+    lmh_set, t_high, t_any, v_lmh = choose_lmh(dev)
+    new_set, v_new = choose_new_set(dev)
+    mlflow.log_params({"risk_level_features": lmh_set, "high_threshold": round(t_high, 4),
+                       "medium_threshold": round(t_any, 4), "new_cluster_features": new_set})
+    for r in v_lmh.itertuples():
+        mlflow.log_metric(key(f"backtest high_f1 {r.name}"), r.high_f1)
+    for r in v_new.itertuples():
+        mlflow.log_metric(key(f"backtest caught_at_5 {r.name}"), r.caught_at_5)
 
     # one honest test on 2024-26, trained on everything before it
-    train_valid = pd.concat([train, valid])
-    lmh = lmh_scores(train_valid, test)
-    new = new_scores(train_valid, test)
+    lmh_feats, new_feats = LMH_SETS[lmh_set], NEW_SETS[new_set]
+    lmh, lmh_ci = lmh_scores(dev, test, lmh_feats, t_high, t_any)
+    new, new_ci = new_scores(dev, test, new_feats)
     for r in lmh.itertuples():
-        for m in ["high_recall", "high_precision", "macro_f1", "top10_capture"]:
+        for m in ["high_precision", "high_recall", "high_f1", "macro_f1", "top10_capture"]:
             mlflow.log_metric(key(f"test {m} {r.model}"), getattr(r, m))
     for r in new.itertuples():
-        mlflow.log_metric(key(f"test caught_at_5 {r.score}"), r.caught_at_5)
-        mlflow.log_metric(key(f"test roc_auc {r.score}"), r.roc_auc)
+        for m in ["caught_at_5", "precision_at_5", "roc_auc", "pr_auc"]:
+            mlflow.log_metric(key(f"test {m} {r.score}"), getattr(r, m))
+    mlflow.log_metrics({"test high_f1 minus same-as-now p05": lmh_ci[0], "test high_f1 minus same-as-now p95": lmh_ci[1],
+                        "test caught_at_5 minus past-clusters p05": new_ci[0],
+                        "test caught_at_5 minus past-clusters p95": new_ci[1]})
     mlflow.log_text(lmh.to_csv(index=False), "test_2024_26_risk_level.csv")
     mlflow.log_text(new.to_csv(index=False), "test_2024_26_new_clusters.csv")
-    mlflow.log_text(v.to_csv(index=False), "valid_2022_23_feature_sets.csv")
+    mlflow.log_text(v_lmh.to_csv(index=False), "backtest_risk_level_feature_sets.csv")
+    mlflow.log_text(v_new.to_csv(index=False), "backtest_new_cluster_feature_sets.csv")
 
     # final models: every labelled row
-    labelled = pd.concat([train, valid, test])
-    lmh_model = fit_lmh(labelled)
-    new_feats = NEW_SETS[new_set]
+    labelled = pd.concat([dev, test])
+    lmh_model = fit_lmh(labelled, lmh_feats)
     new_model = fit_new(labelled, new_feats)
-    mlflow.sklearn.log_model(lmh_model, "area_risk_level", input_example=labelled[LMH_FEATURES].head(5))
+    mlflow.sklearn.log_model(lmh_model, "area_risk_level", input_example=labelled[lmh_feats].head(5))
     mlflow.sklearn.log_model(new_model, "new_cluster_score", input_example=labelled[new_feats].head(5))
     run_id = run.info.run_id
 
+display(v_lmh.round(3))
+display(v_new.round(3))
 display(lmh.round(3))
 display(new.round(3))
-print("new-cluster feature set chosen on 2022-23:", new_set)
+print(f"chosen on the backtest: risk level = {lmh_set} (High if P(High) >= {t_high:.3f}), new clusters = {new_set}")
+print(f"test 2024-26, 90% interval: High F1 minus same-as-now [{lmh_ci[0]:+.3f}, {lmh_ci[1]:+.3f}]; "
+      f"caught@5 minus past clusters [{new_ci[0]:+.3f}, {new_ci[1]:+.3f}]")
 
 # COMMAND ----------
 
@@ -131,7 +144,7 @@ spark.sql(f"""
     planning_area STRING,
     level_today INT COMMENT '0 Low, 1 Medium, 2 High on the basis list',
     recent_cases_today INT,
-    predicted_level STRING COMMENT 'Low / Medium / High, most likely level',
+    predicted_level STRING COMMENT 'Low / Medium / High: High if p_high clears the backtest-tuned threshold (MLflow param high_threshold), else Medium if p_medium + p_high clears medium_threshold',
     p_low DOUBLE, p_medium DOUBLE, p_high DOUBLE,
     same_as_now_level STRING COMMENT 'Baseline: the level today, carried forward',
     new_cluster_score DOUBLE COMMENT 'Chance of a new cluster, for areas clear today (else NULL)',
@@ -145,7 +158,7 @@ spark.sql(f"""
   TBLPROPERTIES ('delta.appendOnly' = 'true')
 """)
 
-_, fc = forecast(df, lmh_model, new_model, new_feats)
+_, fc = forecast(df, lmh_model, lmh_feats, t_high, t_any, new_model, new_feats)
 fc = fc.assign(
     forecast_id=str(uuid.uuid4()),
     locked_at_utc=datetime.now(timezone.utc).replace(tzinfo=None),
