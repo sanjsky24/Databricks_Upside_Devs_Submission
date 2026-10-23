@@ -84,6 +84,39 @@ Other ideas that also failed to beat "history + neighbours" on development years
 area's homes, cases spilling over from a neighbour's cluster, history measured in days instead of lists, and
 cluster size and growth.
 
+### 24 Oct: searched for better data and tried more models. Nothing beat the current ones.
+
+**More recent cluster history** is what would help most: the archive has only 63 lists for 2021–26, the years
+after Wolbachia changed where dengue happens. There is no more to be had:
+
+| Source | Result |
+|---|---|
+| Internet Archive (all 112 captures of the page) | Seed already has 79 usable ones; 17 more are a different page ("clusters under surveillance") and 1 repeats a date |
+| data.gov.sg version history | Lists ~1 version a day, but the API serves only the current file (the `version` parameter is ignored) |
+| GitHub (other projects) | No 2021–26 history; other projects reuse the same sgcharts 2013–20 archive |
+
+**More models** (development backtest only; the test years were not used):
+
+| | High-risk F1 | New clusters caught by top 5 |
+|---|---|---|
+| Current models | 0.838 | **0.530** |
+| + how long the area has been active | 0.840 | – |
+| Newer years weighted more (half-life 3 / 1.5 years) | 0.839 / 0.838 | 0.526 / 0.524 |
+| LightGBM | 0.837 | – |
+| LightGBM ranking objective (trained for top 5) | – | 0.503 |
+| Model + "past clusters" blend | – | 0.522 |
+| Baseline ("same as now" / "past clusters here") | 0.816 | 0.484 |
+
+Every variant is within noise of the current model or worse. **The limit is the data, not the model.** With
+area-level cluster lists that are sparse after 2020, this is about as good as it gets. What could change that:
+
+1. **Ask NEA for its historical cluster lists for 2021–26.** NEA has every daily list. This is the single
+   biggest lever.
+2. **Our own daily captures,** running since 15 Oct 2026. Every day adds the history that's missing. In 6–12
+   months there will be enough Wolbachia-era data to retrain on, but not by Demo Day.
+3. **Local weather** (station rainfall, 2016–24 on data.gov.sg, later years via the real-time API) is the only
+   weather that could help rank areas. Expected gain is small, given how weak the national signal is.
+
 ## Model results (2024–26, years the model never saw while learning)
 
 19 NEA lists, 72 High outcomes, 72 new clusters (814 clear area-fortnights). Production's current data, which
