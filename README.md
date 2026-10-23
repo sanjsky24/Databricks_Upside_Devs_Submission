@@ -38,7 +38,7 @@ repo seed CSV   ┘                                        │
 | `bronze_ura_mp2025_planning_area` | URA Master Plan 2025 planning areas | `d_2cc750190544007400b2cfd5d7f53209` |
 | `bronze_sgcharts_dengue_clusters_2013_2020` | Past NEA cluster lists, 347 snapshots May 2013 – Nov 2020 | [outbreak.sgcharts.com/data](https://outbreak.sgcharts.com/data) |
 | `bronze_scidata_dengue_clusters_2020` | Dengue clusters Feb–Jul 2020 (Huang et al., *Scientific Data*) | [figshare 13142777](https://doi.org/10.6084/m9.figshare.13142777) |
-| `bronze_nea_dengue_clusters_wayback` | Past NEA cluster lists from 74 Internet Archive captures, Dec 2018 – Sep 2026 | [`data/seed/nea_dengue_clusters_wayback_2018_2026.ndjson`](data/seed/nea_dengue_clusters_wayback_2018_2026.ndjson) |
+| `bronze_nea_dengue_clusters_wayback` | Past NEA cluster lists from 79 Internet Archive captures, Dec 2018 – Sep 2026 | [`data/seed/nea_dengue_clusters_wayback_2018_2026.ndjson`](data/seed/nea_dengue_clusters_wayback_2018_2026.ndjson) |
 | `bronze_wolbachia_release_start_dates` | Wolbachia phase/site start dates compiled from NEA pages | [`data/seed/wolbachia_release_start_dates.csv`](data/seed/wolbachia_release_start_dates.csv) |
 | `bronze_wolbachia_zone_start_dates` | Start date for each of the 31 zones in NEA's Wolbachia layer (used by the model) | [`data/seed/wolbachia_zone_start_dates.csv`](data/seed/wolbachia_zone_start_dates.csv) |
 | `bronze_cda_weekly_dengue` | Weekly national dengue cases 2023–2026 from CDA bulletin PDFs | [`data/seed/cda_weekly_dengue_2023_2026.csv`](data/seed/cda_weekly_dengue_2023_2026.csv) |
@@ -103,7 +103,7 @@ locally) for higher rate limits. Without one, the client backs off and retries a
   work out which areas were protected on any given date. Circuit Road's date is inferred (`confidence = low`);
   Pasir Ris (Mar 2026) relies on press coverage.
 * **Internet Archive cluster lists**: parsed from archived copies of NEA's dengue cluster page (source: NEA). Coverage
-  is thin in 2021 (few captures) and 2023–24 (8–9 a year). Each row keeps its `capture_url`. 11 of 6,946 clusters have
+  is thin in 2021 (few captures) and 2023–24 (8–9 a year). Each row keeps its `capture_url`. 11 of 7,102 clusters have
   street counts that don't add up to the cluster total, as printed on NEA's page. To rebuild the seed, run
   `python scripts/build_wayback_seed.py <wb_clusters.json>`.
 * **CDA weekly cases**: parsed from the bulletin PDFs; 2025 is missing about 9 weeks.

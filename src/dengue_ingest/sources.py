@@ -133,7 +133,7 @@ SOURCES: list[Source] = [
     Source(
         name="nea_dengue_clusters_wayback", kind="seed", group="dengue_history", fmt="ndjson",
         url="data/seed/nea_dengue_clusters_wayback_2018_2026.ndjson",
-        description="NEA dengue cluster lists from 74 Internet Archive captures of nea.gov.sg, Dec 2018 - Sep 2026 "
+        description="NEA dengue cluster lists from 79 Internet Archive captures of nea.gov.sg, Dec 2018 - Sep 2026 "
                     "(one row per cluster; streets = street-level case counts; capture_url per row). "
                     "Parsed from the archived pages; source NEA. Built by scripts/build_wayback_seed.py.",
     ),
