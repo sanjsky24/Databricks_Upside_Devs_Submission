@@ -12,6 +12,11 @@ Honest evaluation:
 
 The risk-level model predicts High when P(High) clears a threshold tuned on the backtest for High
 F1, instead of class-weighting + most-likely class, which bought recall with precision.
+
+Area history enters as recency-weighted averages (lhist_avg, cls_recent), not the sum-based
+lhist / cls_last3: NEA lists were captured about weekly in 2015-20, about monthly in 2024-26
+and every 4 days live, and a sum would mean something different in each. The old columns
+stay as the "Past clusters here" and "Recent-history average" baselines.
 """
 
 import numpy as np
@@ -22,7 +27,7 @@ from sklearn.metrics import average_precision_score, f1_score, roc_auc_score
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-LMH_FEATURES = ["cls", "lrecent", "ltotal", "n", "lhist", "cls_last3", "nbr", "nat", "du", "wol_dyn", "ms", "mc"]
+LMH_FEATURES = ["cls", "lrecent", "ltotal", "n", "lhist_avg", "cls_recent", "nbr", "nat", "du", "wol_dyn", "ms", "mc"]
 
 # National monthly weather known on the list date (anomalies vs 1982-2014; gold_weather_monthly)
 WEATHER = ["rain_anom_1m", "rain_anom_3m", "rain_days_anom_3m", "tmax_anom_1m", "tmax_anom_3m", "temp_anom_3m",
@@ -36,12 +41,12 @@ LMH_SETS = {
 
 # Candidate feature sets for the new-cluster score (areas with no cluster today), smallest first
 NEW_SETS = {
-    "history": ["lhist", "cls_last3"],
-    "+ neighbours": ["lhist", "cls_last3", "nbr"],
-    "+ homes": ["lhist", "cls_last3", "nbr", "du"],
-    "+ Wolbachia (by release date)": ["lhist", "cls_last3", "nbr", "du", "wol_dyn"],
-    "+ season & national": ["lhist", "cls_last3", "nbr", "du", "wol_dyn", "nat", "ms", "mc"],
-    "+ weather": ["lhist", "cls_last3", "nbr", "du", "wol_dyn", "nat", "ms", "mc"] + WEATHER,
+    "history": ["lhist_avg", "cls_recent"],
+    "+ neighbours": ["lhist_avg", "cls_recent", "nbr"],
+    "+ homes": ["lhist_avg", "cls_recent", "nbr", "du"],
+    "+ Wolbachia (by release date)": ["lhist_avg", "cls_recent", "nbr", "du", "wol_dyn"],
+    "+ season & national": ["lhist_avg", "cls_recent", "nbr", "du", "wol_dyn", "nat", "ms", "mc"],
+    "+ weather": ["lhist_avg", "cls_recent", "nbr", "du", "wol_dyn", "nat", "ms", "mc"] + WEATHER,
 }
 
 TEST_START = "2024-01-01"

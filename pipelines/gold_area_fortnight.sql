@@ -135,9 +135,16 @@ protected AS (
   GROUP BY s.snapshot_date, b.planning_area
 ),
 hist AS (
-  -- past recent cases in this area, each list weighted by exp(-days ago / 180)
+  -- past recent cases in this area, each list weighted by exp(-days ago / 180).
+  -- h is a sum, so it grows with the number of lists captured (weekly in 2015-20, monthly in
+  -- 2024-26, every 4 days live). h_avg and cls_avg are weighted averages, which mean the same
+  -- however far apart the lists are; the model uses those.
   SELECT a.snapshot_date, a.planning_area,
-         sum(b.recent * exp(-datediff(a.snapshot_date, b.snapshot_date) / 180.0)) AS h
+         sum(b.recent * exp(-datediff(a.snapshot_date, b.snapshot_date) / 180.0)) AS h,
+         sum(b.recent * exp(-datediff(a.snapshot_date, b.snapshot_date) / 180.0))
+           / sum(exp(-datediff(a.snapshot_date, b.snapshot_date) / 180.0)) AS h_avg,
+         sum(b.cls * exp(-datediff(a.snapshot_date, b.snapshot_date) / 21.0))
+           / sum(exp(-datediff(a.snapshot_date, b.snapshot_date) / 21.0)) AS cls_avg
   FROM grid a
   JOIN grid b ON b.planning_area = a.planning_area AND b.snapshot_date < a.snapshot_date
   GROUP BY a.snapshot_date, a.planning_area
@@ -190,6 +197,9 @@ SELECT
   log1p(coalesce(h.h, 0)) AS lhist,
   coalesce(avg(g.cls) OVER (PARTITION BY g.planning_area ORDER BY g.snapshot_date
                             ROWS BETWEEN 3 PRECEDING AND 1 PRECEDING), 0) AS cls_last3,
+  -- the same two clues as averages, independent of list spacing (used by the model)
+  log1p(coalesce(h.h_avg, 0)) AS lhist_avg,
+  coalesce(h.cls_avg, 0) AS cls_recent,
   log1p(coalesce(nb.r, 0)) AS nbr,
   log1p(nat.r) AS nat,
   log1p(coalesce(hm.du, 0)) AS du,

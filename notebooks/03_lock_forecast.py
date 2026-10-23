@@ -9,6 +9,7 @@
 # MAGIC 3. Retrains both models on every labelled row and registers them in Unity Catalog.
 # MAGIC 4. Scores all 55 planning areas on the newest NEA list and **appends** them to `gold_sealed_forecasts`, an
 # MAGIC    append-only Delta table (`delta.appendOnly = true`: rows can be added, never changed or deleted).
+# MAGIC    Skipped if that list is already locked; steps 1-3 still run, so this also just retrains.
 # MAGIC
 # MAGIC Each forecast predicts an area's level on the first NEA list 14–35 days after its basis date.
 
@@ -54,11 +55,6 @@ basis = df.snapshot_date.max()
 basis_source = df.loc[df.snapshot_date == basis, "list_source"].iloc[0]
 sealed = f"{catalog}.{schema}.gold_sealed_forecasts"
 print(f"newest NEA list: {basis} ({basis_source}); {len(df):,} rows, {df.y.notna().sum():,} with a known outcome")
-
-if spark.catalog.tableExists(sealed) and not allow_relock:
-    done = spark.sql(f"SELECT count(*) FROM {sealed} WHERE basis_date = DATE'{basis}'").first()[0]
-    if done:
-        dbutils.notebook.exit(f"A forecast for basis date {basis} is already locked; nothing to do.")
 
 # COMMAND ----------
 
@@ -130,6 +126,15 @@ for name in ["area_risk_level", "new_cluster_score"]:
         print(f"registered {catalog}.{schema}.dengueradar_{name} v{mv.version}")
     except Exception as e:
         print(f"could not register {name}: {e}")
+
+# COMMAND ----------
+
+# Training, testing and registering always run; locking is skipped if this NEA list is already locked
+if spark.catalog.tableExists(sealed) and not allow_relock:
+    done = spark.sql(f"SELECT count(*) FROM {sealed} WHERE basis_date = DATE'{basis}'").first()[0]
+    if done:
+        dbutils.notebook.exit(f"Models retrained and registered (MLflow run {run_id}); a forecast for basis date "
+                              f"{basis} is already locked, so nothing new was locked.")
 
 # COMMAND ----------
 
