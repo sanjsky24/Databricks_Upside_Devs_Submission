@@ -8,6 +8,7 @@
 # MAGIC | data.gov.sg (NEA, MOH, HDB, URA, weather) | metadata API → `poll-download` / `initiate-download`; a new folder is landed only when `lastUpdatedAt` changes |
 # MAGIC | SGCharts Outbreak 2013–2020 | `sgcharts.zip` → one CSV per snapshot |
 # MAGIC | Scientific Data 2020 clusters | figshare file |
+# MAGIC | MSS daily weather | one CSV per station per month from weather.gov.sg, landed one folder per month |
 # MAGIC | Wolbachia start dates | `data/seed/wolbachia_release_start_dates.csv` from this repo |
 # MAGIC
 # MAGIC data.gov.sg only serves the *current* version of a dataset, so running this on a schedule is what

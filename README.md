@@ -30,6 +30,7 @@ repo seed CSV   ┘                                        │
 | `bronze_weather_rainfall_monthly_*` | Monthly rainfall total / rain days / max daily, 1982– | `d_b16d…`, `d_1348…`, `d_53ff…` |
 | `bronze_weather_temp_monthly_*` | Monthly temperature mean / mean daily max & min / extremes | `d_7552…`, `d_b0fb…`, `d_c92e…`, `d_72a4…`, `d_3b4b…` |
 | `bronze_weather_humidity_monthly_mean` | Monthly mean relative humidity | `d_e3b1111a26b2aefef4f386c068d4ca5d` |
+| `bronze_mss_daily_weather` | Daily rainfall, temperature and wind for every MSS station (~110), Jan 2015 – last month, no breaks | [weather.gov.sg/climate-historical-daily](https://www.weather.gov.sg/climate-historical-daily/) |
 | `bronze_weather_station_rainfall_hist` | *(optional, ~9 GB)* 5-min station rainfall 2016–2024 (`_part` = year) | 9 yearly datasets |
 | `bronze_weather_station_air_temp_hist` | *(optional, ~9 GB)* station air temperature 2016–2024 | 9 yearly datasets |
 | `bronze_hdb_property_information` | HDB Property Information | `d_17f5382f26140b1fdae0ba2ef6239d2f` |
@@ -41,7 +42,7 @@ repo seed CSV   ┘                                        │
 | `bronze_nea_dengue_clusters_wayback` | Past NEA cluster lists from 79 Internet Archive captures, Dec 2018 – Sep 2026 | [`data/seed/nea_dengue_clusters_wayback_2018_2026.ndjson`](data/seed/nea_dengue_clusters_wayback_2018_2026.ndjson) |
 | `bronze_wolbachia_release_start_dates` | Wolbachia phase/site start dates compiled from NEA pages | [`data/seed/wolbachia_release_start_dates.csv`](data/seed/wolbachia_release_start_dates.csv) |
 | `bronze_wolbachia_zone_start_dates` | Start date for each of the 31 zones in NEA's Wolbachia layer (used by the model) | [`data/seed/wolbachia_zone_start_dates.csv`](data/seed/wolbachia_zone_start_dates.csv) |
-| `bronze_cda_weekly_dengue` | Weekly national dengue cases 2023–2026 from CDA bulletin PDFs | [`data/seed/cda_weekly_dengue_2023_2026.csv`](data/seed/cda_weekly_dengue_2023_2026.csv) |
+| `bronze_cda_weekly_dengue` | Weekly national dengue cases 2023-W01 – 2026-W40 from CDA bulletin PDFs, no missing weeks | [`data/seed/cda_weekly_dengue_2023_2026.csv`](data/seed/cda_weekly_dengue_2023_2026.csv) |
 | `bronze_osm_road_centroids` | Centre point of every named road (OpenStreetMap), to place streets with no block number | [`data/seed/osm_road_centroids.csv`](data/seed/osm_road_centroids.csv) |
 
 The full registry lives in [`src/dengue_ingest/sources.py`](src/dengue_ingest/sources.py); add a row there to ingest another dataset.

@@ -6,7 +6,8 @@ append-only and every row carries the version it came from, so
     SELECT * FROM bronze_nea_dengue_clusters WHERE _version = '20261014T100643'
 
 reproduces exactly what data.gov.sg published at that time. A companion view
-bronze_<source_name>_latest keeps only the newest version of each dataset.
+bronze_<source_name>_latest keeps only the newest version of each dataset (of each
+month, for mss_daily_weather).
 """
 
 import re
@@ -134,5 +135,6 @@ def create_latest_view(spark, table):
     spark.sql(f"""
         CREATE OR REPLACE VIEW {table}_latest AS
         SELECT * FROM {table}
-        QUALIFY _version = max(_version) OVER (PARTITION BY coalesce(_dataset_id, ''))
+        QUALIFY _version = max(_version) OVER (
+          PARTITION BY coalesce(_dataset_id, regexp_extract(_source_file, '/([^/]+)/v=', 1)))
     """)

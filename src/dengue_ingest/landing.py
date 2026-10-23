@@ -25,12 +25,13 @@ import re
 import shutil
 import time
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 import requests
 
-from . import nea_page
+from . import mss_daily, nea_page
 from .sources import Source
 
 META_URL = "https://api-production.data.gov.sg/v2/public/api/datasets/{id}/metadata"
@@ -165,6 +166,7 @@ class Lander:
             "http_file": self._land_file,
             "seed": self._land_seed,
             "nea_page": self._land_nea_page,
+            "mss_daily": self._land_mss_daily,
         }[src.kind]
         return handler(src, force)
 
@@ -249,6 +251,59 @@ class Lander:
         rec = self._commit(src, "page", version, {"data.ndjson": ndjson, "page.html": raw}, {
             "url": src.url, "as_at": asat_d, "clusters": len(rows), "sha256": sha, "bytes": len(raw)})
         return {**rec, "status": "landed"}
+
+    def _land_mss_daily(self, src, force):
+        """One folder per month (all stations in one CSV). A month is fetched until it is
+        three months old, in case MSS corrects it, and never again after that."""
+        page = self._download(mss_daily.PAGE_URL).decode("utf-8", "ignore")
+        stations = mss_daily.stations(page)
+        now = datetime.now(SGT)
+        last = (now.year * 12 + now.month - 1) - 1  # last full month, as months since year 0
+        first = mss_daily.FIRST_MONTH[0] * 12 + mss_daily.FIRST_MONTH[1] - 1
+        landed, versions = [], []
+        for m in range(first, last + 1):
+            yyyymm = f"{m // 12:04d}{m % 12 + 1:02d}"
+            prev = self._latest(src, yyyymm)
+            if prev and last - m >= 3 and not force:
+                continue
+
+            def fetch(st, yyyymm=yyyymm):
+                raw = self._fetch_optional(mss_daily.FILE_URL.format(station=st["station_id"], yyyymm=yyyymm))
+                return mss_daily.rows(raw, st) if raw else []
+
+            with ThreadPoolExecutor(8) as pool:
+                rows = [r for part in pool.map(fetch, stations) for r in part]
+            if not rows:  # not published yet (early in the month)
+                continue
+            raw = mss_daily.to_csv(rows)
+            sha = hashlib.sha256(raw).hexdigest()
+            if prev and prev.get("sha256") == sha and not force:
+                continue
+            version = datetime.now(SGT).strftime("%Y%m%dT%H%M%S")
+            self._commit(src, yyyymm, version, {"data.csv": raw}, {
+                "month": yyyymm, "stations": len({r[0] for r in rows}), "rows": len(rows),
+                "sha256": sha, "bytes": len(raw)})
+            landed.append(yyyymm)
+            versions.append(version)
+        if not landed:
+            return {"source": src.name, "status": "unchanged", "version": None}
+        self.log(f"  mss_daily_weather: landed {len(landed)} month(s) {landed[0]}..{landed[-1]}")
+        return {"source": src.name, "status": "landed", "version": versions[-1], "months": landed}
+
+    def _fetch_optional(self, url):
+        """GET a file that may not exist (station not running that month): bytes, or None on 404."""
+        for i in range(4):
+            try:
+                r = self.http.get(url, timeout=60)
+                if r.status_code == 404:
+                    return None
+                r.raise_for_status()
+                return r.content
+            except requests.RequestException as e:
+                if i == 3:
+                    raise
+                self.log(f"  retry download ({e})")
+                time.sleep(5 * (i + 1))
 
     def _land_seed(self, src, force):
         path = os.path.join(self.repo_root, src.url)

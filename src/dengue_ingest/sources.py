@@ -10,6 +10,7 @@ kinds:
   http_zip  - a zip archive of CSVs (SGCharts Outbreak historical cluster snapshots)
   http_file - a single file at a stable URL (figshare)
   nea_page  - NEA's dengue cluster web page, parsed into one record per cluster (nea_page.py)
+  mss_daily - MSS daily weather, one CSV per station per month, landed one folder per month (mss_daily.py)
   seed      - a file checked into this repo under data/seed/ (CSV, or NDJSON with fmt="ndjson")
 """
 
@@ -90,6 +91,13 @@ SOURCES: list[Source] = [
         "Surface air temperature - monthly absolute extreme minimum"),
     _dg("weather_humidity_monthly_mean", "d_e3b1111a26b2aefef4f386c068d4ca5d", "csv", "weather",
         "Relative humidity - monthly mean"),
+    Source(
+        name="mss_daily_weather", kind="mss_daily", group="weather",
+        url="https://www.weather.gov.sg/climate-historical-daily/",
+        description="Daily rainfall, temperature and wind for every MSS station (~110, with coordinates), Jan 2015 to "
+                    "last month, no breaks. One landed version per month; a month is re-checked until it is three "
+                    "months old, so use bronze_mss_daily_weather_latest (newest version of each month).",
+    ),
 
     # ------------------------------------------------------------- HDB / URA
     _dg("hdb_property_information", "d_17f5382f26140b1fdae0ba2ef6239d2f", "csv", "geo",
@@ -135,7 +143,8 @@ SOURCES: list[Source] = [
         url="data/seed/nea_dengue_clusters_wayback_2018_2026.ndjson",
         description="NEA dengue cluster lists from 79 Internet Archive captures of nea.gov.sg, Dec 2018 - Sep 2026 "
                     "(one row per cluster; streets = street-level case counts; capture_url per row). "
-                    "Parsed from the archived pages; source NEA. Built by scripts/build_wayback_seed.py.",
+                    "Parsed from the archived pages; source NEA. Built by scripts/build_wayback_seed.py; "
+                    "captures saved under other spellings of the URL added by scripts/add_wayback_captures.py.",
     ),
 
     Source(
@@ -163,7 +172,9 @@ SOURCES: list[Source] = [
         name="cda_weekly_dengue", kind="seed", group="cases",
         url="data/seed/cda_weekly_dengue_2023_2026.csv",
         description="Weekly national dengue and DHF cases by epi-week, 2023-2026, parsed from CDA Weekly Infectious "
-                    "Diseases Bulletin PDFs (cda.gov.sg). Some 2025 weeks are missing.",
+                    "Diseases Bulletin PDFs (cda.gov.sg), no missing weeks 2023-W01 to 2026-W40. 2023-W18, 2023-W41 and "
+                    "2025-W01..W12 (except W06, W08) have no bulletin of their own, so they come from the 'same week "
+                    "last year' column of the next year's bulletin.",
     ),
 ]
 
