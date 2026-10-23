@@ -214,7 +214,11 @@ def new_scores(train, test, features):
 
     def row(name, s):
         return (name, caught_at_5(te, s), precision_at_5(te, s), roc_auc_score(te.e, s), average_precision_score(te.e, s))
-    rows = [row("Chance", np.random.RandomState(0).rand(len(te))),
+    # chance = expected value of 5 random picks (one random draw varied from 7% to 15% between data versions):
+    # each new cluster is picked with probability min(5, clear areas) / clear areas
+    g = te.groupby("snapshot_date").e.agg(["size", "sum"])
+    rows = [("Chance (expected)", float((g["sum"] * g["size"].clip(upper=5) / g["size"]).sum() / g["sum"].sum()),
+             float(te.e.mean()), 0.5, float(te.e.mean())),
             row("Most HDB homes", te.du.values),
             row("Past clusters here", te.lhist.values)]
     for name, feats in NEW_SETS.items():
