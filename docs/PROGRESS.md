@@ -125,26 +125,29 @@ includes the 5 restored archive captures.
 ## The first locked forecast (19 Oct, previous model)
 
 - **Locked Mon 19 Oct 2026, 18:44 SGT** in `gold_sealed_forecasts`: forecast id `02bf3500-83ce-4931-9d89-301c13008ed4`,
-  55 areas, code commit `00a8567`, MLflow run `6b21a32982da4f6c8510e2042274cfc8` (experiment `dengueradar`). It is
-  still the only locked forecast (checked 24 Oct).
-- It was made by the **previous** model and stays as it is (the table is append-only). Score it as locked. The
-  next lock uses the fixed model, and its MLflow run records the thresholds and the chosen feature sets.
+  55 areas, code commit `00a8567`, MLflow run `6b21a32982da4f6c8510e2042274cfc8` (experiment `dengueradar`).
+- It was made by the **previous** model and stays as it is (the table is append-only). Score it as locked. It is
+  the only forecast that can be spot-checked by Demo Day.
 - **Checked it can't be edited:** the table has `delta.appendOnly = true`, and a test DELETE was refused
   (`DELTA_CANNOT_MODIFY_APPEND_ONLY`).
 - Based on NEA's list as at 16 Oct. Scored against the first NEA list 14–35 days later, so from about 30 Oct. On
   Demo Day it can only be spot-checked.
 - **High:** Ang Mo Kio, Jurong West, Bishan. **Medium:** Serangoon. **Most likely new clusters:** Sengkang, Hougang,
   Bukit Batok, Yishun, Woodlands.
-- For comparison, the fixed model on NEA's page as at 22 Oct (local run, **not locked**): High Ang Mo Kio and
-  Jurong West. Bishan drops to Medium (2 recent cases), Outram to Low. Top new-cluster picks: Serangoon, Sengkang,
-  Hougang, Bukit Batok, Jurong East.
 
-## Next step: lock a forecast with the fixed model
+## The second locked forecast (24 Oct, fixed model)
 
-Everything is deployed and the gold table has the weather columns. Run `dengue-lock-forecast` (prod). Check in
-MLflow that it chose "clusters & history" (High ≥ ~0.41) and "+ neighbours", and that its test numbers match the
-tables above. They should, because it reads the same table. If they don't, quote the MLflow numbers. Its basis
-will be the newest NEA list (22 Oct today). A lock can't be undone, so run it when the team agrees.
+- **Locked Sat 24 Oct 2026, 00:07 SGT** by a manual run of `dengue-lock-forecast` from the team account (job run
+  `517401153971366`; Claude did not start it). Forecast id `5cb34046-67e4-4631-b783-e7bc9a315538`, 55 areas, code
+  commit `e2564d7`, MLflow run `46b1cb992e6247ec8ba551d732f89509`, table version 2.
+- **MLflow matches this report exactly:** it chose "clusters & history" (High ≥ 0.4067, Medium ≥ 0.3102) and
+  "+ neighbours", on 1,045 test rows. Test High precision 0.647 and F1 0.629, new clusters 0.417, and identical
+  bootstrap intervals. One exception: its "Chance" metric (0.153) is the old single random draw, because the
+  run predates the expected-chance fix. Quote 12%.
+- Based on NEA's list as at 22 Oct. **Scored from 5 Nov** (first list 14–35 days later, until 26 Nov), so after
+  Demo Day.
+- **High:** Ang Mo Kio (P = 0.78), Jurong West (0.62). **Medium:** Bishan (High today, 2 recent cases). **Low:**
+  Outram (Medium today). **Most likely new clusters:** Serangoon, Sengkang, Hougang, Bukit Batok, Jurong East.
 
 ## Problems found
 
@@ -185,4 +188,6 @@ will be the newest NEA list (22 Oct today). A lock can't be undone, so run it wh
 3. **How do we pitch it?** Suggest leading with the honest test and the locked, uneditable forecast. The models
    match or slightly beat strong simple rules. Then the team planner, which turns a ranked list into inspection
    routes. Mention weather as tested and not useful at national level, with local weather as next.
-4. **When do we lock the next forecast?** See "Next step" above.
+4. **Who runs jobs, and when?** The 23 Oct 23:40 ingest and the 24 Oct 00:04 lock were both started by hand from
+   the shared account while code was being deployed. Agree that one person runs locks, after a commit and a
+   deploy, and posts the forecast id. A weekly schedule for the lock job would remove the guesswork.
