@@ -107,6 +107,42 @@ after Wolbachia changed where dengue happens. There is no more to be had:
 | Model + "past clusters" blend | – | 0.522 |
 | Baseline ("same as now" / "past clusters here") | 0.816 | 0.484 |
 
+**Transfer learning from southern Taiwan: tried, does not help.** Taiwan CDC publishes every dengue case since
+1998 with onset date, report date and location. The download used is the Internet Archive copy of
+`od.cdc.gov.tw/eic/Dengue_Daily.csv` from 29 Jul 2025, because the CDC server doesn't answer from here. From
+98,538 local cases in Tainan, Kaohsiung and Pingtung, the same table as Singapore's was built:
+- clusters by NEA's rule (150 m, 14 days), counting a case only once reported;
+- twice-weekly lists across 108 districts, 2002 – Jul 2025;
+- 258,660 labelled rows, 2,720 High outcomes, 1,815 new clusters.
+
+Each Singapore backtest year only used Taiwan data from before that year.
+
+| Development backtest | High-risk F1 | New clusters caught |
+|---|---|---|
+| Current Singapore models | 0.838 | **0.530** |
+| Taiwan model applied to Singapore as-is | 0.806 | 0.366 |
+| Pooled Singapore + Taiwan (Taiwan weight 0.05 / 0.2 / 1) | 0.848 / 0.849 / **0.851** | 0.530 / 0.530 / 0.520 |
+| Singapore model pulled toward Taiwan's weights (weak → strong) | 0.848 / 0.844 / 0.848 | 0.530 / 0.530 / 0.435 |
+| Taiwan prediction as an extra input | 0.837 | 0.530 |
+| LightGBM pretrained on Taiwan, fine-tuned on Singapore | 0.850 | 0.505 |
+| Singapore only, same 8 features as the pooled model (no Taiwan) | 0.849 | – |
+
+Most of the risk-level gain comes from using fewer features (dropping homes, Wolbachia and season), not from
+Taiwan. Taiwan added only +0.002 on top. The best method (pooled, weight 1) was tested once on Singapore 2024–26,
+next to its no-Taiwan twin:
+
+| Test 2024–26 | Called High | Right | Precision | Recall | F1 |
+|---|---|---|---|---|---|
+| Current model (in production) | 68 | 44 | 64.7% | 61.1% | **0.629** |
+| Pooled with Taiwan | 59 | 40 | 67.8% | 55.6% | 0.611 |
+| Singapore only, 8 features | 66 | 43 | 65.2% | 59.7% | 0.623 |
+| Same as now | 71 | 45 | 63.4% | 62.5% | 0.629 |
+
+Neither beats the current model, so **production is unchanged**. Taiwan's dengue behaves differently: it is
+seeded by imported cases, has no Wolbachia, and shows weaker persistence ("same as now" F1 0.76 vs 0.82). The test
+years have now been used for this second comparison too, so treat later test comparisons with more caution.
+Scripts: `taiwan_panel.py`, `transfer.py`, `transfer_test.py` (kept outside the repo, not adopted).
+
 Every variant is within noise of the current model or worse. **The limit is the data, not the model.** With
 area-level cluster lists that are sparse after 2020, this is about as good as it gets. What could change that:
 
