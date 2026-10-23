@@ -143,6 +143,39 @@ seeded by imported cases, has no Wolbachia, and shows weaker persistence ("same 
 years have now been used for this second comparison too, so treat later test comparisons with more caution.
 Scripts: `taiwan_panel.py`, `transfer.py`, `transfer_test.py` (kept outside the repo, not adopted).
 
+**Small-data techniques: every one tested in code, none adopted.** First, a check for overfitting, which is what
+these techniques fix. The models score about the same on rows they trained on as on unseen years: risk level
+0.849 vs 0.838, new clusters 0.526 vs 0.530. They have 1,200–3,450 training rows per input. So they are not
+overfitting, and there is no missing data (0 missing values in the inputs). Development backtest only:
+
+| Technique | Risk level, High F1 (current 0.838) | New clusters, caught by top 5 (current 0.530) |
+|---|---|---|
+| Outlier removal: IQR 1.5× / 3× | 0.709 / 0.812 | 0.528 / 0.530 |
+| Outlier removal: Mahalanobis, top 2.5% | 0.841 | 0.528 |
+| Stronger L2 (C = 0.1 / 0.01) | 0.840 / 0.838 | 0.528 / 0.524 |
+| L1 / Lasso | 0.838–0.841 | 0.524 |
+| PCA (5 components) | 0.820 | – |
+| LDA | 0.823 | 0.518 |
+| SVM (RBF) | 0.828 | 0.385 |
+| Random forest, depth 4 | 0.839 | 0.524 |
+| XGBoost, depth 3, `reg_alpha` 1, `reg_lambda` 5 | 0.842 | 0.507 |
+| Bagging (50 bootstrapped logistic models) | 0.840 | 0.530 |
+| SMOTE (imbalanced-learn, k = 5) | 0.837 | 0.526 |
+| Noise injection (2 noisy copies, 10% σ) | 0.839 | 0.530 |
+| Per-area embedding (one-hot area + L2) | 0.836 | 0.503 |
+| Gaussian copula synthetic rows (2× data) | 0.812 | 0.379 |
+| CTGAN synthetic rows (2× data, 50 epochs) | 0.829 | 0.520 |
+| Transfer learning from Taiwan (above) | 0.837–0.851 | 0.366–0.530 |
+
+The best gain is +0.004, which is noise. Outlier removal by IQR throws away the epidemics, which are what's being
+predicted. Synthetic rows dilute real patterns: copula rows push new clusters below "past clusters here" (0.484). CTGAN does less damage but still loses, and 51.8% of its synthetic rows break basic rules of the data
+(for example, "no cluster today" alongside a cluster count above zero, or more recent cases than total cases).
+
+Validation schemes, scored on the same rows: random 10-fold ×3 gives 0.848, leave-one-list-out 0.847, our
+forward backtest 0.838. Random folds are slightly optimistic, as expected when a model may train on later years.
+**All three overestimate the real 2024–26 result (0.629)** because none of them contains post-Wolbachia years.
+No cross-validation scheme can fix that.
+
 Every variant is within noise of the current model or worse. **The limit is the data, not the model.** With
 area-level cluster lists that are sparse after 2020, this is about as good as it gets. What could change that:
 
