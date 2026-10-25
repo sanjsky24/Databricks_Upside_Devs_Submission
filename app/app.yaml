@@ -5,3 +5,7 @@ env:
     value: dengueradar
   - name: LLM_ENDPOINT
     value: databricks-meta-llama-3-3-70b-instruct
+  - name: GENIE_SPACE_ID
+    value: 01f1d07c20ef1f75b94049d6e4b1f908
+  - name: SHARED_ACCOUNTS
+    value: upsidedevsdaisi@gmail.com

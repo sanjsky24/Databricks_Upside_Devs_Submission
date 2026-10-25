@@ -11,7 +11,8 @@
 # MAGIC | `wolbachia_zones` | `silver_wolbachia_zones` (simplified shapes) |
 # MAGIC | `high_aedes` | high-Aedes areas (centre points) |
 # MAGIC | `clusters` | active clusters on the newest NEA list (`silver_clusters`) |
-# MAGIC | `blocks`, `team_plan` | `gold_block_priority`, `gold_team_plan` |
+# MAGIC | `blocks`, `team_plan` | `gold_block_priority` (+ floors), `gold_team_plan` |
+# MAGIC | `hdb_blocks` | every residential HDB block (map markers when zoomed in) |
 # MAGIC | `track_record`, `test_headline`, `test_by_year`, `weekly_cases` | gold track record, test results, national weekly cases |
 # MAGIC | `retro_check` | `gold_retro_check`: the forecast made afterwards from NEA's 14 Oct list vs NEA's newest list |
 # MAGIC | `meta` | dates the screen shows |
@@ -59,9 +60,14 @@ QUERIES = {
         FROM {T}.silver_clusters
         WHERE snapshot_date = (SELECT max(snapshot_date) FROM {T}.silver_clusters) AND is_active AND lon IS NOT NULL""",
     "blocks": f"""
-        SELECT blk_no, street, planning_area, homes, lon, lat, x, y, weight, near_cluster, near_high_aedes,
-               in_flagged_area, in_wolbachia, reason
-        FROM {T}.gold_block_priority""",
+        SELECT p.blk_no, p.street, p.planning_area, p.homes, CAST(h.max_floor_lvl AS INT) AS floors, p.lon, p.lat, p.x, p.y,
+               p.weight, p.near_cluster, p.near_high_aedes, p.in_flagged_area, p.in_wolbachia, p.reason
+        FROM {T}.gold_block_priority p LEFT JOIN {T}.silver_hdb_blocks h USING (postal_code, blk_no)""",
+    "hdb_blocks": f"""
+        SELECT blk_no, street, planning_area, CAST(total_dwelling_units AS INT) AS homes,
+               CAST(max_floor_lvl AS INT) AS floors, round(lon, 6) AS lon, round(lat, 6) AS lat,
+               wolbachia_start_date IS NOT NULL AS in_wolbachia
+        FROM {T}.silver_hdb_blocks""",
     "team_plan": f"SELECT * FROM {T}.gold_team_plan ORDER BY team",
     "track_record": f"""
         SELECT forecast_id, basis_date, CAST(min(locked_at_utc) AS DATE) AS locked_on, min(score_from) AS score_from,

@@ -174,13 +174,19 @@ which the prototype resolved by chance and the pipeline now resolves to the area
 
 ## Step 4 – The Monday screen: Databricks App on Lakebase
 
-The app in [`app/`](app/) is what officers use. **This week:** Singapore's planning areas coloured by the two-week
-forecast, Wolbachia zones, high-mosquito spots, today's clusters and team sites on one map; a "Why?" panel per area;
-**alerts**: the areas to alert this week, a "Draft alert" button (residents / town council / grassroots; SMS, notice
-or email; English, 中文, Melayu, தமிழ்) that drafts the message with Llama 3.3 on Databricks from that area's facts
-only, flags any number not in the data, and logs drafts and sent alerts in Lakebase (`dengueradar_app.alerts`); the
-new-cluster watch; a team planner with a slider for the number of teams. **Track record:** the 2020–26 test in plain
-language, the forecast made afterwards from NEA's 14 Oct list next to NEA today, the locked forecasts, weekly cases.
+The app in [`app/`](app/) is what officers use. Everyone signs in with their Databricks account (Databricks Apps does
+this; the app has no passwords of its own); on the team's shared account it asks "What should we call you?" and keeps
+the name in that browser. It greets the officer in Singapore time with a summary built only from this week's data. A
+left panel has ten tabs in the order an officer works (This week, Areas, Why?, Clusters today, New clusters, Alerts,
+Teams, Run sheets, Ask, Track record) next to an OpenStreetMap map (dark tiles in dark mode; HDB blocks appear when
+zoomed in). Teams shows time per team (travel, walking, inspection, breaks, finish time, shifts needed) from editable
+assumptions, an ordered walking route, and printable / CSV run sheets. Ask is the Genie chat
+([`app/genie_chat.py`](app/genie_chat.py)); run [`scripts/grant_app_genie.sh`](scripts/grant_app_genie.sh) once so the
+app may use the Genie space and read its tables. Alerts: a "Draft alert" button (residents / town council /
+grassroots; SMS, notice or email; English, 中文, Melayu, தமிழ்) drafts the message with Llama 3.3 on Databricks from that
+area's facts only, flags any number not in the data, and logs drafts and sent alerts in Lakebase
+(`dengueradar_app.alerts`). Track record: the 2020–26 test in plain language, the forecast made afterwards from NEA's
+14 Oct list next to NEA today, the locked forecasts and weekly cases.
 
 ```
 gold tables ──► 05_publish_app_data ──► Lakebase Postgres (schema dengueradar) ──► Databricks App (FastAPI + Leaflet)

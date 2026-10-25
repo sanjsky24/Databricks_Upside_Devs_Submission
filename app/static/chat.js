@@ -1,6 +1,7 @@
 // "Ask DengueRadar": a chat box answered by the DengueRadar Genie space through /api/ask (genie_chat.py).
 // Genie writes SQL over the same gold tables as the rest of this screen; each answer can show its table
 // and the SQL it ran, so officers can check where a number came from.
+// If the page has a #tab-ask element the chat fills that tab; otherwise it is a floating button + panel.
 (() => {
   const SAMPLES = [
     "Which areas are forecast High risk in the next two weeks?",
@@ -17,23 +18,26 @@
   let conversation = null;
   let busy = false;
 
-  document.body.insertAdjacentHTML("beforeend", `
-    <button class="ask-fab" id="ask-fab" aria-expanded="false" aria-controls="ask-panel">
-      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4v-4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/></svg>
-      Ask DengueRadar
-    </button>
-    <section class="ask-panel" id="ask-panel" role="dialog" aria-label="Ask DengueRadar" hidden>
+  const host = document.getElementById("tab-ask");
+  const panelHtml = `
+    <section class="ask-panel${host ? " inline" : ""}" id="ask-panel" ${host ? 'aria-label="Ask DengueRadar"' : 'role="dialog" aria-label="Ask DengueRadar" hidden'}>
       <header class="ask-head">
         <div><b>Ask DengueRadar</b><span>Answers from the same tables as this screen, via Genie</span></div>
         <button class="ask-icon" id="ask-new" title="New conversation" aria-label="New conversation">↺</button>
-        <button class="ask-icon" id="ask-close" title="Close" aria-label="Close">×</button>
+        ${host ? "" : '<button class="ask-icon" id="ask-close" title="Close" aria-label="Close">×</button>'}
       </header>
       <div class="ask-log" id="ask-log" aria-live="polite"></div>
       <form class="ask-form" id="ask-form">
         <textarea id="ask-input" rows="1" maxlength="1000" placeholder="Ask about clusters, risk, teams, accuracy…" aria-label="Your question"></textarea>
         <button type="submit" id="ask-send" aria-label="Send">➤</button>
       </form>
-    </section>`);
+    </section>`;
+  if (host) host.insertAdjacentHTML("beforeend", panelHtml);
+  else document.body.insertAdjacentHTML("beforeend", `
+    <button class="ask-fab" id="ask-fab" aria-expanded="false" aria-controls="ask-panel">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4v-4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/></svg>
+      Ask DengueRadar
+    </button>${panelHtml}`);
 
   const $ = (id) => document.getElementById(id);
   const log = $("ask-log"), input = $("ask-input"), panel = $("ask-panel"), fab = $("ask-fab");
@@ -45,6 +49,7 @@
   }
 
   function open(show) {
+    if (host) return;
     panel.hidden = !show;
     fab.setAttribute("aria-expanded", String(show));
     fab.hidden = show;
@@ -126,8 +131,10 @@
     $("ask-send").disabled = false;
   }
 
-  fab.addEventListener("click", () => open(true));
-  $("ask-close").addEventListener("click", () => open(false));
+  if (!host) {
+    fab.addEventListener("click", () => open(true));
+    $("ask-close").addEventListener("click", () => open(false));
+  }
   $("ask-new").addEventListener("click", () => { if (!busy) { conversation = null; intro(); } });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !panel.hidden) open(false); });
   log.addEventListener("click", (e) => {
@@ -143,5 +150,5 @@
   });
   input.addEventListener("input", () => { input.style.height = "auto"; input.style.height = `${Math.min(input.scrollHeight, 120)}px`; });
   intro();
-  if (location.hash === "#ask") open(true);
+  if (!host && location.hash === "#ask") open(true);
 })();

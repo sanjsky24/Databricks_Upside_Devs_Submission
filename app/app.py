@@ -4,6 +4,8 @@ GET  /            the page (static/index.html)
 GET  /api/data    everything the page shows, as one JSON document
 POST /api/draft   draft an alert for an area or a team site with the LLM (alerts.py)
 GET  /api/alerts  the alert log; POST /api/alerts saves a draft or marks one sent
+GET  /api/me      who is signed in (Databricks Apps sign-in; no passwords of our own)
+POST /api/ask     "Ask DengueRadar", answered by the Genie space (genie_chat.py)
 
 Data lives in Lakebase Postgres, schema `dengueradar`, written by notebooks/05_publish_app_data.py.
 The alert log is the app's own table, dengueradar_app.alerts, so officers see what was already sent.
@@ -21,19 +23,23 @@ from datetime import date, datetime
 
 import uvicorn
 from fastapi import Body, FastAPI, HTTPException, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 import alerts
+import genie_chat
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-TABLES = ["meta", "areas", "wolbachia_zones", "high_aedes", "clusters", "blocks", "team_plan",
+TABLES = ["meta", "areas", "wolbachia_zones", "high_aedes", "clusters", "blocks", "hdb_blocks", "team_plan",
           "track_record", "retro_check", "test_headline", "test_by_year", "weekly_cases"]
 GEOMETRY = {"areas", "wolbachia_zones"}
 CACHE_SECONDS = 300
 
 app = FastAPI(title="DengueRadar")
 app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="static")
+app.include_router(genie_chat.router)
+app.add_middleware(GZipMiddleware, minimum_size=1000)  # /api/data is ~3.5 MB of JSON
 _cache = {"at": 0.0, "data": None}
 
 
@@ -95,8 +101,11 @@ def data():
 
 # ------------------------------------------------------------------ alerts
 
-ALERT_COLUMNS = ["id", "created_at", "created_by", "area", "scope", "audience", "channel", "language",
+# the log shows names, never email addresses
+ALERT_COLUMNS = ["id", "created_at", "created_by_name", "area", "scope", "audience", "channel", "language",
                  "status", "homes", "blocks", "message"]
+# accounts the whole team signs in with: the app can't tell people apart, so it asks for a name
+SHARED_ACCOUNTS = {e.strip().lower() for e in os.environ.get("SHARED_ACCOUNTS", "upsidedevsdaisi@gmail.com").split(",")}
 _sample_alerts = []  # local preview only
 
 
@@ -107,7 +116,24 @@ def _alerts_conn():
                   id bigserial PRIMARY KEY, created_at timestamptz NOT NULL DEFAULT now(), created_by text,
                   area text NOT NULL, scope text, audience text, channel text, language text,
                   status text NOT NULL, homes integer, blocks integer, message text NOT NULL)""")
+    conn.run("ALTER TABLE dengueradar_app.alerts ADD COLUMN IF NOT EXISTS created_by_name text")
     return conn
+
+
+def _identity(request):
+    email = (request.headers.get("x-forwarded-email") or "").strip()
+    user = (request.headers.get("x-forwarded-preferred-username") or "").strip()
+    return email, user
+
+
+@app.get("/api/me")
+def me(request: Request):
+    """Databricks Apps signs everyone in with their Databricks account and passes it in these headers."""
+    email, user = _identity(request)
+    handle = (email or user).split("@")[0]
+    guess = " ".join(w.capitalize() for w in handle.replace(".", " ").replace("_", " ").split() if not w.isdigit())
+    return {"signed_in": bool(email or user), "account": email or user,
+            "shared": (email or user).lower() in SHARED_ACCOUNTS, "suggested_name": guess}
 
 
 @app.post("/api/draft")
@@ -142,20 +168,24 @@ def save_alert(request: Request, b: dict = Body(...)):
         raise HTTPException(400, "need area, message and status draft|sent")
     row = {k: b.get(k) for k in ("area", "scope", "audience", "channel", "language", "status", "homes", "blocks")}
     row["message"] = b["message"][:5000]
-    row["created_by"] = request.headers.get("x-forwarded-email") or request.headers.get("x-forwarded-preferred-username")
+    email, user = _identity(request)
+    row["created_by"] = email or user  # kept for audit, never sent back to the page
+    row["created_by_name"] = (b.get("created_by_name") or "").strip()[:80] or None
     if os.environ.get("DENGUERADAR_SAMPLE"):
         row.update(id=len(_sample_alerts) + 1, created_at=datetime.now().isoformat())
-        _sample_alerts.append(row)
-        return row
+        _sample_alerts.append({k: row.get(k) for k in ALERT_COLUMNS})
+        return _sample_alerts[-1]
     conn = _alerts_conn()
     try:
         r = conn.run("""INSERT INTO dengueradar_app.alerts
-                          (created_by, area, scope, audience, channel, language, status, homes, blocks, message)
-                        VALUES (:created_by, :area, :scope, :audience, :channel, :language, :status, :homes, :blocks, :message)
+                          (created_by, created_by_name, area, scope, audience, channel, language, status, homes, blocks, message)
+                        VALUES (:created_by, :created_by_name, :area, :scope, :audience, :channel, :language, :status,
+                                :homes, :blocks, :message)
                         RETURNING id, created_at""", **row)
     finally:
         conn.close()
-    return {**row, "id": r[0][0], "created_at": _plain(r[0][1])}
+    out = {k: row.get(k) for k in ALERT_COLUMNS}
+    return {**out, "id": r[0][0], "created_at": _plain(r[0][1])}
 
 
 @app.get("/")

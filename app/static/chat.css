@@ -64,3 +64,7 @@
   .ask-panel { right: 0; bottom: 0; width: 100%; height: 100%; border-radius: 0; border: none; }
   .ask-fab { right: 16px; bottom: 16px; }
 }
+
+/* inline: the chat fills the "Ask" tab of the left panel */
+.ask-panel.inline { position: static; width: auto; height: 100%; min-height: 420px; box-shadow: none; border-radius: 10px; }
+@media (max-width: 600px) { .ask-panel.inline { height: 70vh; border: 1px solid var(--line); border-radius: 10px; } }

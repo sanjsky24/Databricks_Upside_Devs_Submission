@@ -6,81 +6,109 @@
   <title>DengueRadar</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/chat.css">
 </head>
 <body>
   <header class="top">
-    <div class="brand">DengueRadar <span class="sep">·</span> <span id="today">Monday screen</span></div>
-    <nav class="views" aria-label="Views">
-      <a href="#week" data-view="week" class="on">This week</a>
-      <a href="#record" data-view="record">Track record</a>
-    </nav>
+    <div class="brand">DengueRadar</div>
     <div class="basis" id="basis">Loading…</div>
+    <button class="user-chip" id="user-chip" hidden></button>
   </header>
 
   <main>
-    <!-- ============================================================ This week -->
-    <div data-section="week" class="view">
-      <section class="kpis" id="kpis"></section>
+    <section class="hello">
+      <h1 id="hello">Good day</h1>
+      <p id="summary"></p>
+    </section>
+    <section class="kpis" id="kpis"></section>
 
-      <section class="grid-main">
-        <div class="card map-card">
-          <div class="card-head">
-            <h2>Risk in two weeks, by planning area</h2>
-            <div class="layers" id="layers"></div>
-          </div>
-          <div id="map" role="img" aria-label="Map of Singapore's planning areas coloured by forecast risk level"></div>
-          <div class="legend" id="legend"></div>
+    <section class="workspace">
+      <aside class="card panel" aria-label="DengueRadar tools">
+        <nav class="tabs" role="tablist" aria-label="Sections">
+          <button role="tab" data-tab="overview">This week</button>
+          <button role="tab" data-tab="areas">Areas</button>
+          <button role="tab" data-tab="why">Why?</button>
+          <button role="tab" data-tab="clusters">Clusters today</button>
+          <button role="tab" data-tab="watch">New clusters</button>
+          <button role="tab" data-tab="alerts">Alerts</button>
+          <button role="tab" data-tab="teams">Teams</button>
+          <button role="tab" data-tab="runsheets">Run sheets</button>
+          <button role="tab" data-tab="ask">Ask</button>
+          <button role="tab" data-tab="record">Track record</button>
+        </nav>
+        <div class="tab-body" id="tab-overview"></div>
+        <div class="tab-body" id="tab-areas" hidden>
+          <p class="sub">Highest risk first. Reasons describe what the model was given for the area. Tap a row for details.</p>
+          <div class="table-wrap"><table class="risk" id="risk"></table></div>
+          <button class="more" id="risk-more" hidden></button>
         </div>
-
-        <aside class="card side">
-          <div class="tabs" role="tablist">
-            <button role="tab" data-tab="why" class="on">Why?</button>
-            <button role="tab" data-tab="alerts">Alerts</button>
-            <button role="tab" data-tab="watch">New clusters</button>
-            <button role="tab" data-tab="plan">Teams</button>
+        <div class="tab-body" id="tab-why" hidden></div>
+        <div class="tab-body" id="tab-clusters" hidden></div>
+        <div class="tab-body" id="tab-watch" hidden></div>
+        <div class="tab-body" id="tab-alerts" hidden></div>
+        <div class="tab-body" id="tab-teams" hidden>
+          <label class="slider">Inspection teams this week <output id="teams-out">6</output>
+            <input type="range" id="teams" min="1" max="12" value="6">
+          </label>
+          <div id="plan-summary"></div>
+          <details class="assume" id="assume">
+            <summary>Assumptions behind the time estimates (editable)</summary>
+            <div class="assume-grid" id="assume-grid"></div>
+            <p class="note">These are planning estimates from the numbers above, not NEA figures. Floors come from HDB's
+              block data. Change any number and every time below updates.</p>
+          </details>
+          <ol class="sites" id="sites"></ol>
+          <p class="note">Each team gets one 300 m site, no overlaps, chosen to cover the most homes near this week's
+            clusters and high-mosquito spots, and in areas the forecast flags. Homes inside Wolbachia zones count half.</p>
+        </div>
+        <div class="tab-body" id="tab-runsheets" hidden>
+          <div class="rs-bar">
+            <label>Team <select id="rs-team"></select></label>
+            <span class="grow"></span>
+            <button type="button" id="rs-print">Print</button>
+            <button type="button" id="rs-csv">CSV (this team)</button>
+            <button type="button" id="rs-csv-all">CSV (all teams)</button>
           </div>
-          <div class="tab-body" id="tab-why"></div>
-          <div class="tab-body" id="tab-alerts" hidden></div>
-          <div class="tab-body" id="tab-watch" hidden></div>
-          <div class="tab-body" id="tab-plan" hidden>
-            <label class="slider">Inspection teams this week <output id="teams-out">6</output>
-              <input type="range" id="teams" min="1" max="12" value="6">
-            </label>
-            <div id="plan-summary"></div>
-            <ol class="sites" id="sites"></ol>
-            <p class="note">Each team gets one 300 m site, no overlaps, chosen to cover the most homes near this week's
-              clusters and high-mosquito spots, and in areas the forecast flags. Homes inside Wolbachia zones count half.</p>
-          </div>
-        </aside>
-      </section>
+          <div id="runsheet"></div>
+        </div>
+        <div class="tab-body" id="tab-ask" hidden></div>
+        <div class="tab-body" id="tab-record" hidden>
+          <h2>Can you trust it?</h2>
+          <p class="sub">Tested on every NEA list from 2020 to 2026, each year predicted only from the years before it.</p>
+          <div id="tests"></div>
+          <h2 id="retro-title" class="h2-gap">How the forecast from NEA's 14 Oct list is doing</h2>
+          <p class="sub" id="retro-sub"></p>
+          <div id="retro"></div>
+          <div id="track"></div>
+          <h2 class="h2-gap">Weekly dengue cases, Singapore</h2>
+          <p class="sub">MOH and CDA weekly bulletins, no missing weeks</p>
+          <div id="weekly" class="weekly"></div>
+        </div>
+      </aside>
 
-      <section class="card">
-        <div class="card-head"><h2>Risk by area</h2><p class="sub">Highest risk first. Reasons describe what the model was given for the area.</p></div>
-        <div class="table-wrap"><table class="risk" id="risk"></table></div>
-        <button class="more" id="risk-more" hidden></button>
-      </section>
-    </div>
+      <div class="card map-card">
+        <div class="layers" id="layers"></div>
+        <div id="map" role="img" aria-label="Map of Singapore's planning areas coloured by forecast risk level, over OpenStreetMap streets"></div>
+        <div class="legend" id="legend"></div>
+      </div>
+    </section>
 
-    <!-- ============================================================ Track record -->
-    <div data-section="record" class="view" hidden>
-      <section class="card">
-        <div class="card-head"><h2>Can you trust it?</h2><p class="sub">Tested on every NEA list from 2020 to 2026, each year predicted only from the years before it.</p></div>
-        <div id="tests"></div>
-      </section>
-      <section class="card">
-        <div class="card-head"><h2 id="retro-title">How the forecast from NEA's 14 Oct list is doing</h2><p class="sub" id="retro-sub"></p></div>
-        <div id="retro"></div>
-        <div id="track"></div>
-      </section>
-      <section class="card">
-        <div class="card-head"><h2>Weekly dengue cases, Singapore</h2><p class="sub">MOH and CDA weekly bulletins, no missing weeks</p></div>
-        <div id="weekly" class="weekly"></div>
-      </section>
-    </div>
-
-    <footer>Data: NEA dengue clusters (data.gov.sg, Internet Archive, sgcharts), NEA Wolbachia &amp; high-Aedes areas, HDB, URA,
-      MOH/CDA bulletins. Served from Lakebase · alerts drafted with Llama 3.3 on Databricks · The Upside Devs.</footer>
+    <footer>Map data © OpenStreetMap contributors. Dengue data: NEA (data.gov.sg, Internet Archive, sgcharts); Wolbachia &amp;
+      high-Aedes areas: NEA; HDB; URA; MOH/CDA bulletins. Served from Lakebase · alerts drafted with Llama 3.3 · questions
+      answered by Genie · The Upside Devs.</footer>
   </main>
+
+  <dialog id="welcome" aria-labelledby="welcome-title">
+    <form method="dialog" class="welcome">
+      <h2 id="welcome-title">Welcome to DengueRadar</h2>
+      <p class="sub" id="welcome-who"></p>
+      <label>What should we call you?
+        <input id="welcome-name" maxlength="40" autocomplete="given-name" required>
+      </label>
+      <p class="note">Your name appears on the alerts you save, so your team knows who sent what. It is kept in this browser only.</p>
+      <button class="primary" id="welcome-go" value="ok">Continue</button>
+    </form>
+  </dialog>
 
   <dialog id="draft-dialog" aria-labelledby="draft-title">
     <form method="dialog" class="draft">
@@ -124,5 +152,6 @@
   <div class="tooltip" id="tip" hidden></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/static/app.js"></script>
+  <script src="/static/chat.js"></script>
 </body>
 </html>
