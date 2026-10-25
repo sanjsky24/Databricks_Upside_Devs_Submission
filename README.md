@@ -174,9 +174,13 @@ which the prototype resolved by chance and the pipeline now resolves to the area
 
 ## Step 4 – The Monday screen: Databricks App on Lakebase
 
-The app in [`app/`](app/) is what officers use: Singapore's planning areas coloured by the two-week forecast,
-Wolbachia zones, high-mosquito spots, today's clusters and team sites on one map; a "Why?" panel per area; the
-new-cluster watch; a team planner with a slider for the number of teams; the track record and test results.
+The app in [`app/`](app/) is what officers use. **This week:** Singapore's planning areas coloured by the two-week
+forecast, Wolbachia zones, high-mosquito spots, today's clusters and team sites on one map; a "Why?" panel per area;
+**alerts**: the areas to alert this week, a "Draft alert" button (residents / town council / grassroots; SMS, notice
+or email; English, 中文, Melayu, தமிழ்) that drafts the message with Llama 3.3 on Databricks from that area's facts
+only, flags any number not in the data, and logs drafts and sent alerts in Lakebase (`dengueradar_app.alerts`); the
+new-cluster watch; a team planner with a slider for the number of teams. **Track record:** the 2020–26 test in plain
+language, the forecast made afterwards from NEA's 14 Oct list next to NEA today, the locked forecasts, weekly cases.
 
 ```
 gold tables ──► 05_publish_app_data ──► Lakebase Postgres (schema dengueradar) ──► Databricks App (FastAPI + Leaflet)

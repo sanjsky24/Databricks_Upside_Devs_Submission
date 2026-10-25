@@ -1,16 +1,17 @@
-// DengueRadar Monday screen. All data comes from /api/data (Lakebase); nothing is computed on the
-// server except reading tables. The team planner runs here so officers can try any number of teams.
+// DengueRadar Monday screen. Data comes from /api/data (Lakebase); alerts are drafted by /api/draft (LLM on
+// Databricks) and logged with /api/alerts. The team planner runs here so officers can try any number of teams.
 
 const $ = (id) => document.getElementById(id);
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const title = (s) => String(s || "").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 const pct = (x) => (x == null ? "–" : `${Math.round(100 * x)}%`);
+const yes = (v) => v === true || v === "true";
 const LEVEL_NUM = { High: 2, Medium: 1, Low: 0 };
-const LEVEL_NAME = ["Low", "Medium", "High"];
 const RADIUS = 300; // metres covered by one team, as in notebooks/04_team_plan.py
 
-let D, map, areaLayer, labelLayer, teamLayer, selected;
+let D, map, areaLayer, labelLayer, teamLayer, currentPlan;
+let ALERTS = [];
 const overlays = {};
 
 function day(s) {
@@ -25,8 +26,7 @@ const tip = $("tip");
 function showTip(ev, html) {
   tip.innerHTML = html;
   tip.hidden = false;
-  const x = Math.min(ev.clientX + 14, window.innerWidth - tip.offsetWidth - 8);
-  tip.style.left = `${x}px`;
+  tip.style.left = `${Math.min(ev.clientX + 14, window.innerWidth - tip.offsetWidth - 8)}px`;
   tip.style.top = `${ev.clientY + 14}px`;
 }
 const hideTip = () => { tip.hidden = true; };
@@ -40,54 +40,68 @@ fetch("/api/data")
 function init() {
   const m = D.meta || {};
   $("today").textContent = new Date().toLocaleDateString("en-SG", { weekday: "long", day: "numeric", month: "short" });
-  $("basis").textContent = `Forecast from NEA's list of ${day(m.basis_date)} · locked ${day(m.locked_on)} · ` +
-    `scored from ${day(m.score_from)} · clusters on the map as at ${day(m.cluster_list_date)}`;
+  $("basis").textContent = `Forecast from NEA's list of ${day(m.basis_date)} · clusters as at ${day(m.cluster_list_date)}`;
   D.areas.sort((a, b) => b.predicted_level_num - a.predicted_level_num || b.p_high - a.p_high ||
     (a.new_cluster_rank ?? 99) - (b.new_cluster_rank ?? 99));
   prepBlocks();
-  kpis();
   drawMap();
   watchList();
   riskTable();
   retro();
   track();
   tests();
-  weekly();
-  const plannerInput = $("teams");
-  plannerInput.addEventListener("input", () => { $("teams-out").textContent = plannerInput.value; replan(); });
+  const teams = $("teams");
+  teams.addEventListener("input", () => { $("teams-out").textContent = teams.value; replan(); });
   replan();
+  kpis();
   selectArea(D.areas[0].planning_area, false);
   document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => tab(b.dataset.tab)));
-  const start = location.hash.slice(1);  // e.g. /#plan opens the team planner
-  if (["why", "watch", "plan"].includes(start)) tab(start);
+  window.addEventListener("hashchange", route);
+  route();
+  setupDraftDialog();
+  loadAlerts();
+}
+
+// ------------------------------------------------------------------ views and tabs
+function route() {
+  const h = location.hash.slice(1);
+  const view = h === "record" ? "record" : "week";
+  document.querySelectorAll("[data-section]").forEach((s) => { s.hidden = s.dataset.section !== view; });
+  document.querySelectorAll(".views a").forEach((a) => a.classList.toggle("on", a.dataset.view === view));
+  if (view === "week") { setTimeout(() => map.invalidateSize(), 0); if (["why", "alerts", "watch", "plan"].includes(h)) tab(h); }
+  if (view === "record" && !$("weekly").innerHTML) weekly();  // draw once visible, so it gets its real width
+  if (h.startsWith("draft=")) openDraft(decodeURIComponent(h.slice(6)));  // e.g. #draft=JURONG%20WEST
 }
 
 function tab(name) {
   document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === name));
-  ["why", "watch", "plan"].forEach((t) => { $(`tab-${t}`).hidden = t !== name; });
+  ["why", "alerts", "watch", "plan"].forEach((t) => { $(`tab-${t}`).hidden = t !== name; });
   if (teamLayer) (name === "plan" || $("lay-teams").checked ? teamLayer.addTo(map) : teamLayer.remove());
 }
 
 // ------------------------------------------------------------------ KPIs
 function kpis() {
   const n = (lvl) => D.areas.filter((a) => a.predicted_level === lvl).length;
-  const today = D.areas.filter((a) => a.level_today > 0).length;
   const cases = D.clusters.reduce((s, c) => s + (c.total || 0), 0);
+  const nearHomes = B.filter((b) => yes(b.near_cluster)).reduce((s, b) => s + b.h, 0);
+  const weekAgo = Date.now() - 7 * 864e5;
+  const sent = ALERTS.filter((a) => a.status === "sent" && new Date(a.created_at) >= weekAgo).length;
+  const toAlert = alertAreas().length;
   const tiles = [
     ["high", n("High"), "areas forecast High", "a cluster with 10+ cases, in two weeks"],
     ["", n("Medium"), "areas forecast Medium", "any active cluster, in two weeks"],
-    ["", D.clusters.length, "clusters on NEA's list", `${cases} cases · ${today} areas`],
-    ["", D.areas.filter((a) => a.new_cluster_watch).length, "areas on new-cluster watch", "clear today, most likely to see a new cluster"],
-    ["", "", "priority homes, 6 teams", "", "kpi-homes"],
+    ["", D.clusters.length, "clusters on NEA's list", `${cases} cases in ${new Set(D.clusters.map((c) => c.planning_area)).size} areas`],
+    ["", nearHomes.toLocaleString(), "homes within 300 m of a cluster", "the residents most worth alerting"],
+    ["", `${sent}/${toAlert}`, "areas alerted this week", "alerts marked sent in the last 7 days"],
   ];
-  $("kpis").innerHTML = tiles.map(([cls, v, l, s, id]) =>
-    `<div class="kpi ${cls}"${id ? ` id="${id}"` : ""}><div class="v">${esc(v)}</div><div class="l">${esc(l)}</div><div class="s">${esc(s)}</div></div>`).join("");
+  $("kpis").innerHTML = tiles.map(([cls, v, l, s]) =>
+    `<div class="kpi ${cls}"><div class="v">${esc(v)}</div><div class="l">${esc(l)}</div><div class="s">${esc(s)}</div></div>`).join("");
 }
 
 // ------------------------------------------------------------------ map
 function areaStyle(a) {
   const fill = { High: css("--high"), Medium: css("--medium"), Low: css("--low") }[a.predicted_level];
-  const watch = a.new_cluster_watch;
+  const watch = yes(a.new_cluster_watch);
   return {
     fillColor: fill, fillOpacity: a.predicted_level === "Low" ? 1 : 0.88,
     color: watch ? css("--accent") : css("--land-line"), weight: watch ? 2.2 : 1, dashArray: watch ? "5 4" : null,
@@ -102,8 +116,8 @@ function drawMap() {
       const a = f.properties;
       layer.on("click", () => selectArea(a.planning_area, true));
       layer.on("mousemove", (e) => showTip(e.originalEvent,
-        `<b>${esc(a.area)}</b><br>Today ${esc(a.level_today_name)} → ${esc(a.predicted_level)} in 2 weeks<br>P(High) ${pct(a.p_high)}` +
-        (a.new_cluster_rank ? `<br>New-cluster rank ${a.new_cluster_rank}` : "")));
+        `<b>${esc(a.area)}</b><br>Today ${esc(a.level_today_name)} → ${esc(a.predicted_level)} in 2 weeks<br>Chance of High ${pct(a.p_high)}` +
+        (a.new_cluster_rank && a.level_today === 0 ? `<br>New-cluster rank ${a.new_cluster_rank}` : "")));
       layer.on("mouseout", hideTip);
     },
   }).addTo(map);
@@ -129,7 +143,7 @@ function drawMap() {
     return mk;
   }));
   const named = (a) => a.predicted_level !== "Low" || a.level_today > 0;
-  labelLayer = L.layerGroup(D.areas.filter((a) => named(a) || a.new_cluster_watch).map((a) =>
+  labelLayer = L.layerGroup(D.areas.filter((a) => named(a) || yes(a.new_cluster_watch)).map((a) =>
     L.marker([a.lat, a.lon], { interactive: false, icon: L.divIcon({ className: "area-label", iconSize: null,
       html: named(a)
         ? `<span style="display:inline-block;transform:translate(-50%,-50%);white-space:nowrap">${esc(a.area)}</span>`
@@ -150,7 +164,7 @@ function drawMap() {
     `<span><i class="sw" style="background:${css("--high")}"></i>High</span>`,
     `<span><i class="sw" style="background:${css("--medium")}"></i>Medium</span>`,
     `<span><i class="sw" style="background:${css("--low")}"></i>Low</span>`,
-    `<span><i class="sw" style="border:2px dashed ${css("--accent")};background:none"></i>New-cluster watch (#rank)</span>`,
+    `<span><i class="sw" style="border:2px dashed ${css("--accent")};background:none"></i>New-cluster watch (rank)</span>`,
     `<span><i class="sw" style="background:${css("--wol")};opacity:.6"></i>Wolbachia areas</span>`,
     `<span><i class="sw dot" style="background:${css("--aedes")}"></i>High-mosquito spots</span>`,
     `<span><i class="sw dot" style="background:${css("--cluster")}"></i>Dengue clusters (bigger = more cases)</span>`,
@@ -162,13 +176,13 @@ function drawMap() {
 function selectArea(pa, switchTab) {
   const a = D.areas.find((x) => x.planning_area === pa);
   if (!a) return;
-  selected = pa;
   areaLayer.eachLayer((l) => {
     const p = l.feature.properties;
     l.setStyle(p.planning_area === pa ? { ...areaStyle(p), color: css("--ink"), weight: 3, dashArray: null } : areaStyle(p));
     if (p.planning_area === pa) l.bringToFront();
   });
   const reasons = (a.why || "").split(" · ").filter(Boolean);
+  const last = lastAlert(pa);
   $("tab-why").innerHTML = `
     <p class="why-area">${esc(a.area)}</p>
     <div class="why-levels">Today ${chip(a.level_today_name)} → in 2 weeks ${chip(a.predicted_level)} <span>${esc(a.direction)}</span></div>
@@ -182,15 +196,22 @@ function selectArea(pa, switchTab) {
       <div><b>${a.recent_cases}</b>cases, last 2 weeks</div>
       <div><b>${a.recent_next_door}</b>recent cases next door</div>
       <div><b>${pct(a.wolbachia_share)}</b>homes in Wolbachia zones</div>
-      ${a.new_cluster_rank ? `<div><b>#${a.new_cluster_rank}</b>new-cluster rank (${pct(a.new_cluster_score)})</div>` : ""}
+      ${a.new_cluster_rank && a.level_today === 0 ? `<div><b>#${a.new_cluster_rank}</b>new-cluster rank (${pct(a.new_cluster_score)})</div>` : ""}
+    </div>
+    <div class="why-alert">
+      <button class="primary" data-draft="${esc(pa)}">Draft alert for ${esc(a.area)}</button>
+      <span class="sub">${last ? `Last alert: ${esc(last.status)} ${esc(day(last.created_at))}` : "No alert yet"}</span>
     </div>`;
+  $("tab-why").querySelector("[data-draft]").addEventListener("click", () => openDraft(pa));
   if (switchTab) tab("why");
 }
 
 // ------------------------------------------------------------------ new-cluster watch
 function watchList() {
-  const w = D.areas.filter((a) => a.new_cluster_watch).sort((a, b) => a.new_cluster_rank - b.new_cluster_rank);
-  $("tab-watch").innerHTML = `<p class="sub" style="margin-bottom:6px">Areas with no cluster today, ranked by the chance a new one starts within two weeks.</p>
+  const w = D.areas.filter((a) => yes(a.new_cluster_watch)).sort((a, b) => a.new_cluster_rank - b.new_cluster_rank);
+  const h = (D.test_headline || []).find((r) => r.baseline_name === "Past clusters here");
+  $("tab-watch").innerHTML = `<p class="sub" style="margin-bottom:6px">Areas with no cluster today, most likely to see a new one within two weeks.
+      ${h ? `In tests on 2020–26, a new cluster started in one of these five areas ${pct(h.model)} of the time.` : ""}</p>
     <ol class="watch">${w.map((a) => `<li data-pa="${esc(a.planning_area)}"><span class="rk">${a.new_cluster_rank}</span>
       <span class="nm">${esc(a.area)}</span><span class="pc">${pct(a.new_cluster_score)}</span>
       <span class="rs">${esc(a.why)}</span></li>`).join("")}</ol>`;
@@ -213,7 +234,7 @@ function prepBlocks() {
 }
 
 function plan(teams) {
-  // greedy: each team takes the 300 m site covering the most priority weight not yet covered
+  // greedy: each team takes the 300 m site covering the most priority weight not yet covered (as planner.py)
   const covered = new Uint8Array(B.length);
   const sites = [];
   for (let t = 0; t < teams; t++) {
@@ -227,61 +248,140 @@ function plan(teams) {
     const sel = NB[best].filter((j) => !covered[j]);
     sel.forEach((j) => { covered[j] = 1; });
     const a = B[best];
-    sites.push({ anchor: `Blk ${a.blk_no} ${title(a.street)}`, area: title(a.planning_area), lat: a.lat, lon: a.lon,
-      blocks: sel.length, homes: sel.reduce((s, j) => s + B[j].h, 0), nearCluster: sel.filter((j) => B[j].near_cluster).length });
+    sites.push({ anchor: `Blk ${a.blk_no} ${title(a.street)}`, planning_area: a.planning_area, area: title(a.planning_area),
+      lat: a.lat, lon: a.lon, blocks: sel.map((j) => B[j]), homes: sel.reduce((s, j) => s + B[j].h, 0),
+      nearCluster: sel.filter((j) => yes(B[j].near_cluster)).length });
   }
-  // simple plan: the top-weight blocks, spread at least 2 x radius apart
-  const order = B.map((_, i) => i).sort((p, q) => B[q].w - B[p].w);
-  const simple = new Uint8Array(B.length), anchors = [];
-  for (const j of order) {
-    if (anchors.length === teams) break;
-    if (anchors.every((a) => (B[j].x - B[a].x) ** 2 + (B[j].y - B[a].y) ** 2 > (2 * RADIUS) ** 2)) {
-      anchors.push(j);
-      NB[j].forEach((k) => { simple[k] = 1; });
-    }
-  }
-  const homes = (mask) => B.reduce((s, b, i) => s + (mask[i] ? b.h : 0), 0);
-  return { sites, planHomes: homes(covered), simpleHomes: homes(simple) };
+  return sites;
 }
 
 function replan() {
   const teams = +$("teams").value;
-  const p = plan(teams);
-  const ratio = p.simpleHomes ? (p.planHomes / p.simpleHomes).toFixed(1) : "–";
-  $("plan-summary").innerHTML = `<div><b>${p.planHomes.toLocaleString()}</b>priority homes reached</div>
-    <div><b>${ratio}×</b>vs top blocks spread out (${p.simpleHomes.toLocaleString()})</div>`;
-  $("sites").innerHTML = p.sites.map((s, i) => `<li data-i="${i}"><b>${esc(s.anchor)}</b>, ${esc(s.area)}
-    <div class="m">${s.blocks} blocks · ${s.homes.toLocaleString()} homes · ${s.nearCluster} near a cluster</div></li>`).join("");
-  const kpi = $("kpi-homes");
-  if (kpi) {
-    kpi.querySelector(".v").textContent = p.planHomes.toLocaleString();
-    kpi.querySelector(".l").textContent = `priority homes, ${teams} team${teams > 1 ? "s" : ""}`;
-    kpi.querySelector(".s").textContent = `${ratio}× a simple plan`;
-  }
+  const sites = currentPlan = plan(teams);
+  const homes = sites.reduce((s, x) => s + x.homes, 0), blocks = sites.reduce((s, x) => s + x.blocks.length, 0);
+  $("plan-summary").innerHTML = `<div><b>${homes.toLocaleString()}</b>homes to visit</div><div><b>${blocks}</b>HDB blocks</div>`;
+  $("sites").innerHTML = sites.map((s, i) => `<li data-i="${i}"><b>${esc(s.anchor)}</b>, ${esc(s.area)}
+    <div class="m">${s.blocks.length} blocks · ${s.homes.toLocaleString()} homes · ${s.nearCluster} near a cluster</div>
+    <button class="link" data-site="${i}">Draft alert for these blocks</button></li>`).join("");
   const wasOn = teamLayer && map.hasLayer(teamLayer);
   if (teamLayer) teamLayer.remove();
-  teamLayer = L.layerGroup(p.sites.flatMap((s, i) => [
+  teamLayer = L.layerGroup(sites.flatMap((s, i) => [
     L.circle([s.lat, s.lon], { radius: RADIUS, color: css("--team"), weight: 2, dashArray: "4 3", fillColor: css("--team"), fillOpacity: 0.1, interactive: false }),
     L.marker([s.lat, s.lon], { icon: L.divIcon({ className: "team-pin", html: String(i + 1), iconSize: [24, 24], iconAnchor: [12, 12] }) })
-      .on("mousemove", (e) => showTip(e.originalEvent, `<b>Team ${i + 1}: ${esc(s.anchor)}</b><br>${s.blocks} blocks · ${s.homes.toLocaleString()} homes`))
+      .on("mousemove", (e) => showTip(e.originalEvent, `<b>Team ${i + 1}: ${esc(s.anchor)}</b><br>${s.blocks.length} blocks · ${s.homes.toLocaleString()} homes`))
       .on("mouseout", hideTip),
   ]));
   if (wasOn || $("lay-teams").checked || !$("tab-plan").hidden) teamLayer.addTo(map);
-  $("sites").querySelectorAll("li").forEach((li) => li.addEventListener("click", () => {
-    const s = p.sites[+li.dataset.i];
+  $("sites").querySelectorAll("li").forEach((li) => li.addEventListener("click", (e) => {
+    const s = sites[+li.dataset.i];
+    if (e.target.dataset.site != null) { openDraft(s.planning_area, s); return; }
     teamLayer.addTo(map);
     map.setView([s.lat, s.lon], 15);
   }));
 }
 
+// ------------------------------------------------------------------ alerts
+function alertAreas() {
+  // who should hear from us this week: forecast High/Medium, clusters today, or top-5 new-cluster watch
+  return D.areas.filter((a) => a.predicted_level !== "Low" || a.level_today > 0 || yes(a.new_cluster_watch));
+}
+const lastAlert = (pa) => ALERTS.find((x) => x.area === pa);
+
+function loadAlerts() {
+  fetch("/api/alerts").then((r) => (r.ok ? r.json() : [])).then((rows) => { ALERTS = rows; alertsTab(); kpis(); })
+    .catch(() => { alertsTab(); });
+}
+
+function alertsTab() {
+  const why = (a) => (a.level_today > 0 ? `${a.n_clusters} cluster${a.n_clusters > 1 ? "s" : ""} today`
+    : a.predicted_level !== "Low" ? `forecast ${a.predicted_level}` : `new-cluster watch #${a.new_cluster_rank}`);
+  const homesNear = (pa) => B.filter((b) => b.planning_area === pa && yes(b.near_cluster)).reduce((s, b) => s + b.h, 0);
+  $("tab-alerts").innerHTML = `<p class="sub" style="margin-bottom:6px">Areas to alert this week. Drafts use only this week's facts for the area.</p>
+    <ul class="alert-list">${alertAreas().map((a) => {
+      const last = lastAlert(a.planning_area), near = homesNear(a.planning_area);
+      return `<li><div><b>${esc(a.area)}</b> ${chip(a.predicted_level)} <span class="sub">${esc(why(a))}${near ? ` · ${near.toLocaleString()} homes near clusters` : ""}</span></div>
+        <div class="row"><span class="st ${last ? esc(last.status) : "none"}">${last ? `${last.status === "sent" ? "Sent" : "Draft saved"} ${esc(day(last.created_at))}` : "Not alerted"}</span>
+        <button class="primary small" data-draft="${esc(a.planning_area)}">${last ? "New alert" : "Draft alert"}</button></div></li>`;
+    }).join("")}</ul>
+    <h3 class="log-h">Alert log</h3>
+    ${ALERTS.length ? `<ul class="alert-log">${ALERTS.slice(0, 15).map((x) => `<li><div><b>${esc(title(x.area))}</b> · ${esc(x.status)} · ${esc(day(x.created_at))}
+      <span class="sub">${esc(x.audience)} · ${esc(x.channel)} · ${esc(x.language)}${x.created_by ? ` · ${esc(x.created_by)}` : ""}</span></div>
+      <details><summary>Message</summary><pre>${esc(x.message)}</pre></details></li>`).join("")}</ul>` : `<p class="sub">No alerts yet.</p>`}`;
+  $("tab-alerts").querySelectorAll("[data-draft]").forEach((b) => b.addEventListener("click", () => openDraft(b.dataset.draft)));
+}
+
+let draftCtx = null;
+function openDraft(pa, site) {
+  const a = D.areas.find((x) => x.planning_area === pa);
+  const near = B.filter((b) => b.planning_area === pa && yes(b.near_cluster));
+  const blocks = site ? site.blocks : near;
+  draftCtx = { area: pa, site: site ? { anchor: site.anchor, blocks: site.blocks.map(({ blk_no, street, homes, weight }) => ({ blk_no, street, homes, weight })) } : null };
+  $("draft-title").textContent = `Draft alert · ${a.area}`;
+  $("draft-scope").textContent = site
+    ? `Team site at ${site.anchor}: ${site.blocks.length} blocks, ${site.homes.toLocaleString()} homes.`
+    : blocks.length ? `${blocks.length} blocks within 300 m of today's clusters, ${blocks.reduce((s, b) => s + b.h, 0).toLocaleString()} homes.`
+      : "No cluster here today: the draft names the highest-priority blocks in the area.";
+  $("d-text").value = "";
+  $("d-status").textContent = "";
+  $("d-warn").hidden = true;
+  $("draft-dialog").showModal();
+}
+
+function setupDraftDialog() {
+  $("d-go").addEventListener("click", async () => {
+    if (!draftCtx) return;
+    $("d-go").disabled = true;
+    $("d-status").textContent = "Drafting with Llama 3.3 on Databricks…";
+    $("d-warn").hidden = true;
+    try {
+      const r = await fetch("/api/draft", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...draftCtx, audience: $("d-audience").value, channel: $("d-channel").value, language: $("d-language").value }) });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d = await r.json();
+      $("d-text").value = d.message;
+      $("d-status").textContent = `Draft based on ${d.facts.number_of_blocks} blocks (${d.facts.homes_in_those_blocks.toLocaleString()} homes). Check it before sending.`;
+      if (d.unverified_numbers.length) {
+        $("d-warn").textContent = `These numbers aren't in this week's data; check or remove them: ${d.unverified_numbers.join(", ")}`;
+        $("d-warn").hidden = false;
+      }
+    } catch (e) {
+      $("d-status").textContent = `Could not draft (${e.message}). You can still write the message yourself.`;
+    } finally {
+      $("d-go").disabled = false;
+    }
+  });
+  $("d-copy").addEventListener("click", () => { navigator.clipboard.writeText($("d-text").value); $("d-status").textContent = "Copied."; });
+  $("d-email").addEventListener("click", () => {
+    const t = $("d-text").value, m = t.match(/^Subject:\s*(.*)\n+/i);
+    const subject = m ? m[1] : `Dengue alert: ${$("draft-title").textContent.replace("Draft alert · ", "")}`;
+    window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(m ? t.slice(m[0].length) : t)}`;
+  });
+  const save = async (status) => {
+    const text = $("d-text").value.trim();
+    if (!text) { $("d-status").textContent = "Nothing to save yet."; return; }
+    const blocks = draftCtx.site ? draftCtx.site.blocks : B.filter((b) => b.planning_area === draftCtx.area && yes(b.near_cluster));
+    const r = await fetch("/api/alerts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+      area: draftCtx.area, scope: draftCtx.site ? `site: ${draftCtx.site.anchor}` : "area", status,
+      audience: $("d-audience").value, channel: $("d-channel").value, language: $("d-language").value,
+      homes: blocks.reduce((s, b) => s + (+b.homes), 0), blocks: blocks.length, message: text }) });
+    if (!r.ok) { $("d-status").textContent = `Could not save (HTTP ${r.status}).`; return; }
+    ALERTS.unshift(await r.json());
+    alertsTab(); kpis(); selectArea(draftCtx.area, false);
+    $("d-status").textContent = status === "sent" ? "Logged as sent." : "Draft saved.";
+    if (status === "sent") setTimeout(() => $("draft-dialog").close(), 600);
+  };
+  $("d-save").addEventListener("click", () => save("draft"));
+  $("d-sent").addEventListener("click", () => save("sent"));
+}
+
 // ------------------------------------------------------------------ risk table
 function riskTable(all = false) {
   const rows = all ? D.areas : D.areas.slice(0, 12);
-  $("risk").innerHTML = `<thead><tr><th>Area</th><th>Today</th><th>In 2 weeks</th><th>Change</th><th>P(High)</th>
+  $("risk").innerHTML = `<thead><tr><th>Area</th><th>Today</th><th>In 2 weeks</th><th>Change</th><th>Chance of High</th>
     <th>New-cluster rank</th><th>Why? (what the model sees)</th></tr></thead><tbody>${rows.map((a) => `
     <tr data-pa="${esc(a.planning_area)}"><td><b>${esc(a.area)}</b></td><td>${chip(a.level_today_name)}</td>
     <td>${chip(a.predicted_level)}</td><td>${esc(a.direction)}</td><td class="num">${pct(a.p_high)}</td>
-    <td class="num">${a.new_cluster_rank ?? "–"}</td><td class="why">${esc(a.why)}</td></tr>`).join("")}</tbody>`;
+    <td class="num">${a.level_today === 0 ? a.new_cluster_rank ?? "–" : "–"}</td><td class="why">${esc(a.why)}</td></tr>`).join("")}</tbody>`;
   $("risk-more").hidden = all;
   $("risk-more").textContent = `Show all ${D.areas.length} areas`;
   $("risk-more").onclick = () => riskTable(true);
@@ -291,12 +391,31 @@ function riskTable(all = false) {
   }));
 }
 
-// ------------------------------------------------------------------ proof
+// ------------------------------------------------------------------ track record
+function tests() {
+  const h = D.test_headline || [];
+  const years = D.test_by_year || [];
+  if (!h.length) { $("tests").innerHTML = `<p class="sub">No test results yet.</p>`; return; }
+  const nc = h.find((r) => r.baseline_name === "Past clusters here");
+  const chance = h.find((r) => r.baseline_name.startsWith("Chance"));
+  const hi = h.find((r) => r.question.startsWith("High"));
+  const newTotal = years.reduce((s, y) => s + (+y.new_clusters || 0), 0);
+  const bar = (label, v, model) => `<span>${esc(label)}</span><span class="bar${model ? " model" : ""}" style="width:${Math.max(2, 100 * v)}%"></span><span class="n">${pct(v)}</span>`;
+  $("tests").innerHTML = `
+    <div class="test"><div class="q">Where new clusters start</div>
+      <p>Of ${newTotal} new clusters, <b>${Math.round(nc.model * newTotal)}</b> started in an area on that week's top-5 watch list (${pct(nc.model)}).</p>
+      <div class="bars">${bar("DengueRadar watch list", nc.model, true)}${bar("Areas with the most past clusters", nc.baseline, false)}
+        ${chance ? bar("5 areas picked at random", chance.baseline, false) : ""}</div></div>
+    <div class="test"><div class="q">Which areas will be High</div>
+      <p>As accurate as assuming today's levels stay the same for two weeks (score ${(+hi.model).toFixed(2)} vs ${(+hi.baseline).toFixed(2)}),
+        which is hard to beat because clusters stay open for at least two weeks. The forecast adds a chance for every area.</p></div>`;
+}
+
 function retro() {
   const r = D.retro_check || [];
   if (!r.length) { $("retro").innerHTML = `<p class="sub">No retrospective forecast yet.</p>`; return; }
-  const f = r[0], n = r.length, final = f.final === true || f.final === "true";
-  const count = (k) => r.filter((x) => x[k] === true || x[k] === "true").length;
+  const f = r[0], n = r.length, final = yes(f.final);
+  const count = (k) => r.filter((x) => yes(x[k])).length;
   $("retro-title").textContent = `How the forecast from NEA's ${day(f.basis_date)} list is doing`;
   $("retro-sub").textContent = (final
     ? `Two-week check against NEA's list of ${day(f.compare_date)} (${f.days_later} days later).`
@@ -304,7 +423,7 @@ function retro() {
     ` Made afterwards using only data known on ${day(f.basis_date)}, so it is not one of the locked forecasts.`;
   const calledHigh = r.filter((x) => x.predicted_level === "High");
   const stillHigh = calledHigh.filter((x) => x.level_now === "High");
-  const newOnes = r.filter((x) => x.new_cluster_appeared === true || x.new_cluster_appeared === "true");
+  const newOnes = r.filter((x) => yes(x.new_cluster_appeared));
   const inTop5 = newOnes.filter((x) => x.new_cluster_rank && x.new_cluster_rank <= 5);
   const shown = r.filter((x) => x.level_then !== "Low" || x.predicted_level !== "Low" || x.level_now !== "Low" || (x.new_cluster_rank && x.new_cluster_rank <= 5))
     .sort((a, b) => LEVEL_NUM[b.predicted_level] - LEVEL_NUM[a.predicted_level] || LEVEL_NUM[b.level_now] - LEVEL_NUM[a.level_now] ||
@@ -318,14 +437,10 @@ function retro() {
     </div>
     <div class="table-wrap"><table class="risk retro-table"><thead><tr><th>Area</th><th>${esc(day(f.basis_date))}</th>
       <th>Forecast</th><th>${esc(day(f.compare_date))}</th><th></th></tr></thead><tbody>
-      ${shown.map((x) => `<tr data-pa="${esc(x.planning_area)}"><td><b>${esc(x.area)}</b>${x.new_cluster_rank && x.new_cluster_rank <= 5 ? ` <span class="rank-inline">#${x.new_cluster_rank}</span>` : ""}</td>
+      ${shown.map((x) => `<tr><td><b>${esc(x.area)}</b>${x.new_cluster_rank && x.new_cluster_rank <= 5 ? ` <span class="rank-inline">#${x.new_cluster_rank}</span>` : ""}</td>
         <td>${chip(x.level_then)}</td><td>${chip(x.predicted_level)}</td><td>${chip(x.level_now)}</td>
-        <td>${mark(x.model_right === true || x.model_right === "true")}</td></tr>`).join("")}</tbody></table></div>
+        <td>${mark(yes(x.model_right))}</td></tr>`).join("")}</tbody></table></div>
     <p class="note">Every other area: forecast Low, Low on ${esc(day(f.compare_date))}.</p>`;
-  $("retro").querySelectorAll("tbody tr").forEach((tr) => tr.addEventListener("click", () => {
-    selectArea(tr.dataset.pa, true);
-    $("map").scrollIntoView({ behavior: "smooth", block: "center" });
-  }));
 }
 
 function track() {
@@ -337,42 +452,17 @@ function track() {
       : `NEA list ${day(r.basis_date)}, scored from ${day(r.score_from)}`).map(esc).join(" · ") + `.</p>`;
 }
 
-function tests() {
-  const h = D.test_headline;
-  if (!h.length) { $("tests").innerHTML = `<p class="sub">No test results yet.</p>`; return; }
-  $("test-sub").textContent = `${h[0].test_lists} NEA lists, ${h[0].test}; every year predicted only from the years before it.`;
-  const hi = h.find((r) => r.question.startsWith("High"));
-  const nc = h.filter((r) => r.question.startsWith("New"));
-  const bar = (label, v, max, model, fmt) => `<span>${esc(label)}</span><span class="bar${model ? " model" : ""}" style="width:${Math.max(2, 100 * v / max)}%"></span><span class="n">${fmt(v)}</span>`;
-  const signed = (v) => `${v >= 0 ? "+" : "−"}${Math.abs(100 * v).toFixed(1)}`;
-  const ci = (r) => (r.diff_p05 == null ? "" : `Difference, 90% range: ${signed(r.diff_p05)} to ${signed(r.diff_p95)} points`);
-  let html = "";
-  if (nc.length) {
-    const past = nc.find((r) => r.baseline_name === "Past clusters here"), chance = nc.find((r) => r.baseline_name.startsWith("Chance"));
-    html += `<div class="test"><div class="q">New clusters caught by the top 5 picks</div><div class="bars">
-      ${bar("DengueRadar", nc[0].model, 1, true, pct)}${past ? bar("Past clusters here", past.baseline, 1, false, pct) : ""}
-      ${chance ? bar("Chance", chance.baseline, 1, false, pct) : ""}</div>
-      <div class="ci">${past ? esc(ci(past)) : ""}${chance ? ` · ${(nc[0].model / chance.baseline).toFixed(1)}× chance` : ""}</div></div>`;
-  }
-  if (hi) {
-    html += `<div class="test"><div class="q">High-risk areas (F1: catching High areas vs false alarms)</div><div class="bars">
-      ${bar("DengueRadar", hi.model, 1, true, (v) => v.toFixed(2))}${bar("Same as now", hi.baseline, 1, false, (v) => v.toFixed(2))}</div>
-      <div class="ci">${esc(ci(hi))}: a tie with the toughest simple rule</div></div>`;
-  }
-  $("tests").innerHTML = html;
-}
-
 function weekly() {
   const pts = D.weekly_cases.map((r) => ({ d: new Date(`${r.week_end.slice(0, 10)}T00:00:00`), v: +r.cases })).sort((a, b) => a.d - b.d);
   if (!pts.length) return;
-  const W = 600, H = 190, L0 = 34, R = 8, T = 10, Bm = 22;
+  const W = 900, H = 220, L0 = 40, R = 8, T = 10, Bm = 22;
   const x0 = pts[0].d, x1 = pts[pts.length - 1].d, ymax = Math.max(...pts.map((p) => p.v));
   const sx = (d) => L0 + (W - L0 - R) * (d - x0) / (x1 - x0), sy = (v) => T + (H - T - Bm) * (1 - v / ymax);
   const years = [];
   for (let y = x0.getFullYear() + 1; y <= x1.getFullYear(); y++) years.push(new Date(`${y}-01-01T00:00:00`));
-  $("weekly").innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Weekly dengue cases">
+  $("weekly").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly dengue cases">
     <line class="ax" x1="${L0}" x2="${W - R}" y1="${H - Bm}" y2="${H - Bm}"/>
-    ${years.map((d) => `<line class="ax" x1="${sx(d)}" x2="${sx(d)}" y1="${T}" y2="${H - Bm}"/><text x="${sx(d) + 3}" y="${H - 6}">${d.getFullYear()}</text>`).join("")}
+    ${years.map((d) => `<line class="ax" x1="${sx(d)}" x2="${sx(d)}" y1="${T}" y2="${H - Bm}"/><text x="${sx(d) + 4}" y="${H - 6}">${d.getFullYear()}</text>`).join("")}
     <text x="2" y="${T + 9}">${ymax}</text><text x="2" y="${H - Bm}">0</text>
     <polyline class="ln" points="${pts.map((p) => `${sx(p.d).toFixed(1)},${sy(p.v).toFixed(1)}`).join(" ")}"/>
     <line class="hv" id="wk-hv" y1="${T}" y2="${H - Bm}" visibility="hidden"/>

@@ -1,9 +1,13 @@
 """DengueRadar app: the Monday screen, served from Lakebase.
 
-GET /            the page (static/index.html)
-GET /api/data    everything the page shows, as one JSON document
+GET  /            the page (static/index.html)
+GET  /api/data    everything the page shows, as one JSON document
+POST /api/draft   draft an alert for an area or a team site with the LLM (alerts.py)
+GET  /api/alerts  the alert log; POST /api/alerts saves a draft or marks one sent
 
 Data lives in Lakebase Postgres, schema `dengueradar`, written by notebooks/05_publish_app_data.py.
+The alert log is the app's own table, dengueradar_app.alerts, so officers see what was already sent.
+
 On Databricks Apps the database resource sets PGHOST / PGDATABASE / PGUSER / PGPORT, and the app's
 service principal signs in with a short-lived OAuth token (pg8000, a pure-Python driver).
 
@@ -16,9 +20,11 @@ import time
 from datetime import date, datetime
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+
+import alerts
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TABLES = ["meta", "areas", "wolbachia_zones", "high_aedes", "clusters", "blocks", "team_plan",
@@ -76,11 +82,80 @@ def _load():
     return out
 
 
-@app.get("/api/data")
-def data():
+def _data():
     if _cache["data"] is None or time.time() - _cache["at"] > CACHE_SECONDS:
         _cache["data"], _cache["at"] = _load(), time.time()
-    return JSONResponse(_cache["data"])
+    return _cache["data"]
+
+
+@app.get("/api/data")
+def data():
+    return JSONResponse(_data())
+
+
+# ------------------------------------------------------------------ alerts
+
+ALERT_COLUMNS = ["id", "created_at", "created_by", "area", "scope", "audience", "channel", "language",
+                 "status", "homes", "blocks", "message"]
+_sample_alerts = []  # local preview only
+
+
+def _alerts_conn():
+    conn = _connect()
+    conn.run("CREATE SCHEMA IF NOT EXISTS dengueradar_app")
+    conn.run("""CREATE TABLE IF NOT EXISTS dengueradar_app.alerts (
+                  id bigserial PRIMARY KEY, created_at timestamptz NOT NULL DEFAULT now(), created_by text,
+                  area text NOT NULL, scope text, audience text, channel text, language text,
+                  status text NOT NULL, homes integer, blocks integer, message text NOT NULL)""")
+    return conn
+
+
+@app.post("/api/draft")
+def draft(body: dict = Body(...)):  # plain def: FastAPI runs it in a thread, so the LLM call doesn't block others
+    audience, channel, language = body.get("audience"), body.get("channel"), body.get("language")
+    if audience not in alerts.AUDIENCES or channel not in alerts.CHANNELS or language not in alerts.LANGUAGES:
+        raise HTTPException(400, "unknown audience, channel or language")
+    try:
+        f = alerts.facts(_data(), body.get("area"), body.get("site"))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    from databricks.sdk import WorkspaceClient
+    text, unverified = alerts.draft(WorkspaceClient(), f, audience, channel, language)
+    return {"message": text, "unverified_numbers": unverified, "facts": f}
+
+
+@app.get("/api/alerts")
+def list_alerts():
+    if os.environ.get("DENGUERADAR_SAMPLE"):
+        return _sample_alerts[::-1]
+    conn = _alerts_conn()
+    try:
+        rows = conn.run(f"SELECT {', '.join(ALERT_COLUMNS)} FROM dengueradar_app.alerts ORDER BY created_at DESC LIMIT 100")
+    finally:
+        conn.close()
+    return [dict(zip(ALERT_COLUMNS, map(_plain, r))) for r in rows]
+
+
+@app.post("/api/alerts")
+def save_alert(request: Request, b: dict = Body(...)):
+    if b.get("status") not in ("draft", "sent") or not b.get("area") or not (b.get("message") or "").strip():
+        raise HTTPException(400, "need area, message and status draft|sent")
+    row = {k: b.get(k) for k in ("area", "scope", "audience", "channel", "language", "status", "homes", "blocks")}
+    row["message"] = b["message"][:5000]
+    row["created_by"] = request.headers.get("x-forwarded-email") or request.headers.get("x-forwarded-preferred-username")
+    if os.environ.get("DENGUERADAR_SAMPLE"):
+        row.update(id=len(_sample_alerts) + 1, created_at=datetime.now().isoformat())
+        _sample_alerts.append(row)
+        return row
+    conn = _alerts_conn()
+    try:
+        r = conn.run("""INSERT INTO dengueradar_app.alerts
+                          (created_by, area, scope, audience, channel, language, status, homes, blocks, message)
+                        VALUES (:created_by, :area, :scope, :audience, :channel, :language, :status, :homes, :blocks, :message)
+                        RETURNING id, created_at""", **row)
+    finally:
+        conn.close()
+    return {**row, "id": r[0][0], "created_at": _plain(r[0][1])}
 
 
 @app.get("/")

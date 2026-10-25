@@ -10,68 +10,116 @@
 <body>
   <header class="top">
     <div class="brand">DengueRadar <span class="sep">·</span> <span id="today">Monday screen</span></div>
+    <nav class="views" aria-label="Views">
+      <a href="#week" data-view="week" class="on">This week</a>
+      <a href="#record" data-view="record">Track record</a>
+    </nav>
     <div class="basis" id="basis">Loading…</div>
   </header>
 
   <main>
-    <section class="kpis" id="kpis"></section>
+    <!-- ============================================================ This week -->
+    <div data-section="week" class="view">
+      <section class="kpis" id="kpis"></section>
 
-    <section class="grid-main">
-      <div class="card map-card">
-        <div class="card-head">
-          <h2>Risk in two weeks, by planning area</h2>
-          <div class="layers" id="layers"></div>
+      <section class="grid-main">
+        <div class="card map-card">
+          <div class="card-head">
+            <h2>Risk in two weeks, by planning area</h2>
+            <div class="layers" id="layers"></div>
+          </div>
+          <div id="map" role="img" aria-label="Map of Singapore's planning areas coloured by forecast risk level"></div>
+          <div class="legend" id="legend"></div>
         </div>
-        <div id="map" role="img" aria-label="Map of Singapore's planning areas coloured by forecast risk level"></div>
-        <div class="legend" id="legend"></div>
-      </div>
 
-      <aside class="card side">
-        <div class="tabs" role="tablist">
-          <button role="tab" data-tab="why" class="on">Why?</button>
-          <button role="tab" data-tab="watch">New-cluster watch</button>
-          <button role="tab" data-tab="plan">Team planner</button>
-        </div>
-        <div class="tab-body" id="tab-why"></div>
-        <div class="tab-body" id="tab-watch" hidden></div>
-        <div class="tab-body" id="tab-plan" hidden>
-          <label class="slider">Inspection teams <output id="teams-out">6</output>
-            <input type="range" id="teams" min="1" max="12" value="6">
-          </label>
-          <div id="plan-summary"></div>
-          <ol class="sites" id="sites"></ol>
-          <p class="note">Each team covers one 300 m site, no overlaps. Priority = near a cluster on NEA's newest list (×3),
-            near a high-mosquito area (×2), or in an area the forecast flags (×1); halved inside Wolbachia zones.
-            Compared with sending teams to the top-priority blocks spread ≥600 m apart.</p>
-        </div>
-      </aside>
-    </section>
+        <aside class="card side">
+          <div class="tabs" role="tablist">
+            <button role="tab" data-tab="why" class="on">Why?</button>
+            <button role="tab" data-tab="alerts">Alerts</button>
+            <button role="tab" data-tab="watch">New clusters</button>
+            <button role="tab" data-tab="plan">Teams</button>
+          </div>
+          <div class="tab-body" id="tab-why"></div>
+          <div class="tab-body" id="tab-alerts" hidden></div>
+          <div class="tab-body" id="tab-watch" hidden></div>
+          <div class="tab-body" id="tab-plan" hidden>
+            <label class="slider">Inspection teams this week <output id="teams-out">6</output>
+              <input type="range" id="teams" min="1" max="12" value="6">
+            </label>
+            <div id="plan-summary"></div>
+            <ol class="sites" id="sites"></ol>
+            <p class="note">Each team gets one 300 m site, no overlaps, chosen to cover the most homes near this week's
+              clusters and high-mosquito spots, and in areas the forecast flags. Homes inside Wolbachia zones count half.</p>
+          </div>
+        </aside>
+      </section>
 
-    <section class="card">
-      <div class="card-head"><h2>Risk by area</h2><p class="sub">Highest risk first. Reasons describe what the model was given for the area, not its weights.</p></div>
-      <div class="table-wrap"><table class="risk" id="risk"></table></div>
-      <button class="more" id="risk-more" hidden></button>
-    </section>
+      <section class="card">
+        <div class="card-head"><h2>Risk by area</h2><p class="sub">Highest risk first. Reasons describe what the model was given for the area.</p></div>
+        <div class="table-wrap"><table class="risk" id="risk"></table></div>
+        <button class="more" id="risk-more" hidden></button>
+      </section>
+    </div>
 
-    <section class="grid-proof">
-      <div class="card retro-card">
+    <!-- ============================================================ Track record -->
+    <div data-section="record" class="view" hidden>
+      <section class="card">
+        <div class="card-head"><h2>Can you trust it?</h2><p class="sub">Tested on every NEA list from 2020 to 2026, each year predicted only from the years before it.</p></div>
+        <div id="tests"></div>
+      </section>
+      <section class="card">
         <div class="card-head"><h2 id="retro-title">How the forecast from NEA's 14 Oct list is doing</h2><p class="sub" id="retro-sub"></p></div>
         <div id="retro"></div>
         <div id="track"></div>
-      </div>
-      <div class="card">
-        <div class="card-head"><h2>Tested on every year from 2020</h2><p class="sub" id="test-sub"></p></div>
-        <div id="tests"></div>
-      </div>
-      <div class="card">
+      </section>
+      <section class="card">
         <div class="card-head"><h2>Weekly dengue cases, Singapore</h2><p class="sub">MOH and CDA weekly bulletins, no missing weeks</p></div>
         <div id="weekly" class="weekly"></div>
-      </div>
-    </section>
+      </section>
+    </div>
 
     <footer>Data: NEA dengue clusters (data.gov.sg, Internet Archive, sgcharts), NEA Wolbachia &amp; high-Aedes areas, HDB, URA,
-      MOH/CDA bulletins. Served from Lakebase · The Upside Devs.</footer>
+      MOH/CDA bulletins. Served from Lakebase · alerts drafted with Llama 3.3 on Databricks · The Upside Devs.</footer>
   </main>
+
+  <dialog id="draft-dialog" aria-labelledby="draft-title">
+    <form method="dialog" class="draft">
+      <div class="draft-head">
+        <h2 id="draft-title">Draft alert</h2>
+        <button value="cancel" class="x" aria-label="Close">×</button>
+      </div>
+      <p class="sub" id="draft-scope"></p>
+      <div class="draft-opts">
+        <label>Audience <select id="d-audience">
+          <option value="residents">Residents of these blocks</option>
+          <option value="town_council">Town council estate officers</option>
+          <option value="grassroots">Grassroots &amp; RC leaders</option>
+        </select></label>
+        <label>Channel <select id="d-channel">
+          <option value="sms">SMS / WhatsApp</option>
+          <option value="notice">Lift-lobby notice</option>
+          <option value="email">Email</option>
+        </select></label>
+        <label>Language <select id="d-language">
+          <option value="en">English</option>
+          <option value="zh">中文</option>
+          <option value="ms">Bahasa Melayu</option>
+          <option value="ta">தமிழ்</option>
+        </select></label>
+      </div>
+      <button type="button" class="primary" id="d-go">Draft with AI</button>
+      <p class="sub" id="d-status" role="status"></p>
+      <textarea id="d-text" rows="10" placeholder="The draft appears here. You can edit it before saving or sending."></textarea>
+      <p class="warn" id="d-warn" hidden></p>
+      <div class="draft-actions">
+        <button type="button" id="d-copy">Copy</button>
+        <button type="button" id="d-email">Open in email</button>
+        <span class="grow"></span>
+        <button type="button" id="d-save">Save draft</button>
+        <button type="button" class="primary" id="d-sent">Mark as sent</button>
+      </div>
+    </form>
+  </dialog>
 
   <div class="tooltip" id="tip" hidden></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

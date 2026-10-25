@@ -45,7 +45,7 @@ SELECT
   max(basis_date) AS basis_date
 FROM {T}.gold_forecast_latest"""),
     "plan_headline": ("Team plan in numbers", f"""
-SELECT plan_homes, round(homes_ratio, 1) AS plan_ratio FROM {T}.gold_team_plan_summary"""),
+SELECT plan_homes FROM {T}.gold_team_plan_summary"""),
     "basis": ("Forecast dates", f"""
 SELECT max(basis_date) AS basis_date, CAST(max(locked_at_utc) AS DATE) AS locked_on, max(score_from) AS score_from
 FROM {T}.gold_forecast_latest"""),
@@ -57,10 +57,6 @@ ORDER BY new_cluster_rank"""),
     "plan": ("Team plan", f"""
 SELECT team, anchor, area, blocks, homes, blocks_near_cluster, homes_in_wolbachia, cluster_list_date
 FROM {T}.gold_team_plan ORDER BY team"""),
-    "plan_summary": ("Team plan vs simple plan", f"""
-SELECT 'Team planner' AS plan, plan_homes AS priority_homes FROM {T}.gold_team_plan_summary
-UNION ALL
-SELECT 'Top blocks, spread out', simple_homes FROM {T}.gold_team_plan_summary"""),
     "track": ("Locked forecasts", f"""
 SELECT basis_date, CAST(min(locked_at_utc) AS DATE) AS locked_on, min(score_from) AS score_from,
        min(score_until) AS score_until, max(status) AS status, max(outcome_date) AS outcome_list,
@@ -181,8 +177,7 @@ monday = [
     table("t_basis", "basis", [("basis_date", "NEA list used", "date"), ("locked_on", "Locked", "date"),
                                ("score_from", "Scored from", "date")],
           "Forecast", None, {"x": 3, "y": 2, "width": 1, "height": 3}),
-    counter("c_homes", "plan_headline", "plan_homes", "Priority homes, 6 teams", "covered by this week's team plan", {"x": 4, "y": 2, "width": 1, "height": 3}),
-    counter("c_ratio", "plan_headline", "plan_ratio", "× the simple plan", "homes reached vs top blocks spread out", {"x": 5, "y": 2, "width": 1, "height": 3}),
+    counter("c_homes", "plan_headline", "plan_homes", "Homes the 6 teams visit", "this week's team plan", {"x": 4, "y": 2, "width": 2, "height": 3}),
     {"widget": {"name": hid("w", "map"), "queries": query("forecast", ["lon", "lat", "forecast", "area", "p_high"]),
                 "spec": {"version": 3, "widgetType": "scatter",
                          "encodings": {
@@ -215,15 +210,7 @@ monday = [
                              ("blocks", "Blocks", "int"), ("homes", "Homes", "int"),
                              ("blocks_near_cluster", "Blocks near a cluster", "int"),
                              ("homes_in_wolbachia", "Homes in Wolbachia zones", "int")],
-          "This week's sites", None, {"x": 0, "y": 25, "width": 4, "height": 7}),
-    {"widget": {"name": hid("w", "plan_vs"), "queries": query("plan_summary", ["plan", "priority_homes"]),
-                "spec": {"version": 3, "widgetType": "bar",
-                         "encodings": {"x": {"fieldName": "plan", "scale": {"type": "categorical"}, "displayName": "Plan"},
-                                       "y": {"fieldName": "priority_homes", "scale": {"type": "quantitative"},
-                                             "displayName": "Priority homes reached"},
-                                       "label": {"show": True}},
-                         "frame": frame("Priority homes reached by 6 teams")}},
-     "position": {"x": 4, "y": 25, "width": 2, "height": 7}},
+          "This week's sites", None, {"x": 0, "y": 25, "width": 6, "height": 7}),
 ]
 
 proof = [

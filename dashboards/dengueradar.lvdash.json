@@ -29,7 +29,7 @@
       "name": "6db2730c",
       "displayName": "Team plan in numbers",
       "queryLines": [
-        "SELECT plan_homes, round(homes_ratio, 1) AS plan_ratio FROM workspace.dengue.gold_team_plan_summary\n"
+        "SELECT plan_homes FROM workspace.dengue.gold_team_plan_summary\n"
       ]
     },
     {
@@ -56,15 +56,6 @@
       "queryLines": [
         "SELECT team, anchor, area, blocks, homes, blocks_near_cluster, homes_in_wolbachia, cluster_list_date\n",
         "FROM workspace.dengue.gold_team_plan ORDER BY team\n"
-      ]
-    },
-    {
-      "name": "c19b9e44",
-      "displayName": "Team plan vs simple plan",
-      "queryLines": [
-        "SELECT 'Team planner' AS plan, plan_homes AS priority_homes FROM workspace.dengue.gold_team_plan_summary\n",
-        "UNION ALL\n",
-        "SELECT 'Top blocks, spread out', simple_homes FROM workspace.dengue.gold_team_plan_summary\n"
       ]
     },
     {
@@ -421,63 +412,21 @@
               "encodings": {
                 "value": {
                   "fieldName": "plan_homes",
-                  "displayName": "Priority homes, 6 teams"
+                  "displayName": "Homes the 6 teams visit"
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "Priority homes, 6 teams",
+                "title": "Homes the 6 teams visit",
                 "showDescription": true,
-                "description": "covered by this week's team plan"
+                "description": "this week's team plan"
               }
             }
           },
           "position": {
             "x": 4,
             "y": 2,
-            "width": 1,
-            "height": 3
-          }
-        },
-        {
-          "widget": {
-            "name": "104877aa",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "6db2730c",
-                  "disaggregated": true,
-                  "fields": [
-                    {
-                      "name": "plan_ratio",
-                      "expression": "`plan_ratio`"
-                    }
-                  ]
-                }
-              }
-            ],
-            "spec": {
-              "version": 2,
-              "widgetType": "counter",
-              "encodings": {
-                "value": {
-                  "fieldName": "plan_ratio",
-                  "displayName": "× the simple plan"
-                }
-              },
-              "frame": {
-                "showTitle": true,
-                "title": "× the simple plan",
-                "showDescription": true,
-                "description": "homes reached vs top blocks spread out"
-              }
-            }
-          },
-          "position": {
-            "x": 5,
-            "y": 2,
-            "width": 1,
+            "width": 2,
             "height": 3
           }
         },
@@ -1326,64 +1275,7 @@
           "position": {
             "x": 0,
             "y": 25,
-            "width": 4,
-            "height": 7
-          }
-        },
-        {
-          "widget": {
-            "name": "b0671119",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "c19b9e44",
-                  "disaggregated": true,
-                  "fields": [
-                    {
-                      "name": "plan",
-                      "expression": "`plan`"
-                    },
-                    {
-                      "name": "priority_homes",
-                      "expression": "`priority_homes`"
-                    }
-                  ]
-                }
-              }
-            ],
-            "spec": {
-              "version": 3,
-              "widgetType": "bar",
-              "encodings": {
-                "x": {
-                  "fieldName": "plan",
-                  "scale": {
-                    "type": "categorical"
-                  },
-                  "displayName": "Plan"
-                },
-                "y": {
-                  "fieldName": "priority_homes",
-                  "scale": {
-                    "type": "quantitative"
-                  },
-                  "displayName": "Priority homes reached"
-                },
-                "label": {
-                  "show": true
-                }
-              },
-              "frame": {
-                "showTitle": true,
-                "title": "Priority homes reached by 6 teams"
-              }
-            }
-          },
-          "position": {
-            "x": 4,
-            "y": 25,
-            "width": 2,
+            "width": 6,
             "height": 7
           }
         }

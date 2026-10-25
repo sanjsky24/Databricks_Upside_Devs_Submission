@@ -163,7 +163,7 @@ resources:
     # The Monday screen with the real map (planning areas, Wolbachia zones, clusters, team sites)
     dengueradar_app:
       name: dengueradar
-      description: "DengueRadar: two-week dengue risk by planning area, new-cluster watch and team planner"
+      description: "DengueRadar: two-week dengue risk by planning area, alerts, new-cluster watch and team planner"
       source_code_path: ./app
       resources:
         - name: lakebase
@@ -172,6 +172,11 @@ resources:
             instance_name: ${resources.database_instances.lakebase.name}
             database_name: databricks_postgres
             permission: CAN_CONNECT_AND_CREATE
+        - name: llm
+          description: Foundation model that drafts the alerts
+          serving_endpoint:
+            name: databricks-meta-llama-3-3-70b-instruct
+            permission: CAN_QUERY
 
   dashboards:
     # Analyst view: risk by area, new-cluster watch, team plan, track record, test results.
