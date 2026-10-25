@@ -269,12 +269,46 @@ includes the 5 restored archive captures.
    on: commit to GitHub, then deploy. Never edit the bundle folder in the workspace by hand.** A deploy always
    overwrites it with the deployer's laptop.
 
+## Genie space and app chat (25 Oct)
+
+**Genie space "DengueRadar Genie" is live** (space `01f1d07c20ef1f75b94049d6e4b1f908`,
+[open](https://dbc-3196997f-5ea3.cloud.databricks.com/genie/rooms/01f1d07c20ef1f75b94049d6e4b1f908)). It reads the
+same tables as the dashboard and app:
+- forecast, new-cluster watch, active clusters, area levels
+- track record and model tests
+- team plan and blocks
+- weekly cases, weather, high-Aedes areas
+
+It is built by `scripts/build_genie_space.py`, which holds the tables, column notes, instructions, 15 example queries
+and 10 benchmarks. Rerun it after changing any of these; it updates the space in place. `--check` runs every query
+first, and `--ask` asks Genie the benchmarks and compares its answers with the right ones: **10/10 right**.
+
+Instructions keep the answers honest. Genie:
+- reports the model next to its baseline and says "not proven" when the 90% interval crosses 0
+- never calls F1 "accuracy", and writes "under 1%" instead of 0%
+- never calls an area safe, and sends medical questions to a doctor, NEA and MOH
+
+**Chat box for the app: code pushed, not wired in yet.** `app/genie_chat.py` (endpoints `POST /api/ask` and
+`GET /api/ask/{conversation}/{message}`; the page polls, so slow answers never hit the Apps proxy timeout) plus
+`app/static/chat.js` and `app/static/chat.css` add an "Ask DengueRadar" button. It opens a panel showing Genie's
+answer, the result table, the SQL it ran and follow-up questions. Tested locally against the real Lakebase data and
+Genie in light, dark and phone layouts. To turn it on:
+
+1. `app/app.py`: after `from fastapi.staticfiles import StaticFiles` add `from genie_chat import router as genie_router`;
+   after the `app.mount("/static", ...)` line add `app.include_router(genie_router)`.
+2. `app/static/index.html`: after the `style.css` link add `<link rel="stylesheet" href="/static/chat.css">`; after
+   the `app.js` script add `<script src="/static/chat.js"></script>`.
+3. Run `zsh scripts/grant_app_genie.sh` once. It gives the app's service principal SELECT on the 14 Genie tables,
+   CAN_USE on the warehouse and CAN_RUN on the space. Without it the chat replies with a permissions error.
+4. Deploy the app as usual.
+
 ## Not built yet
 
 - Scoring locked forecasts against what actually happened (`track_record`); first possible on ~30 Oct, so Demo
   Day shows a spot-check
 - "Why?" reasons per area
-- Team planner, AI/BI dashboard, Genie space, SQL alert, AI weekly summary
+- SQL alert, AI weekly summary
+- Chat box wired into the app (code ready, see above)
 - A weekly schedule for the lock job
 - Local (station-level) weather, the only kind that could help rank areas (see above)
 

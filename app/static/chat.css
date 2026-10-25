@@ -1,0 +1,66 @@
+/* "Ask DengueRadar" chat box (chat.js). Uses the colour tokens from style.css, so it follows dark mode. */
+.ask-fab { position: fixed; right: 20px; bottom: 20px; z-index: 1100; display: inline-flex; align-items: center; gap: 8px;
+  background: var(--head); color: var(--head-ink); border: 2px solid var(--accent); border-radius: 999px; padding: 10px 18px;
+  font: inherit; font-weight: 700; cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,.18); }
+.ask-fab:hover { background: var(--accent); }
+.ask-fab[hidden] { display: none; }
+
+.ask-panel { position: fixed; right: 20px; bottom: 20px; z-index: 1100; width: 420px; height: min(640px, calc(100vh - 40px));
+  display: flex; flex-direction: column; background: var(--surface); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.25); overflow: hidden; }
+.ask-panel[hidden] { display: none; }
+.ask-head { display: flex; align-items: center; gap: 6px; padding: 12px 12px 12px 16px; background: var(--head); color: var(--head-ink);
+  border-top: 4px solid var(--accent); }
+.ask-head div { flex: 1; min-width: 0; }
+.ask-head b { display: block; font-size: 15px; }
+.ask-head span { display: block; font-size: 12px; color: #c3cbd2; }
+.ask-icon { background: none; border: none; color: inherit; font-size: 20px; line-height: 1; width: 32px; height: 32px;
+  border-radius: 6px; cursor: pointer; }
+.ask-icon:hover { background: rgba(255,255,255,.12); }
+
+.ask-log { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.ask-msg { max-width: 100%; font-size: 14px; line-height: 1.45; }
+.ask-msg p, .ask-msg li { overflow-wrap: anywhere; }
+.ask-msg p { margin: 0 0 6px; }
+.ask-msg ul { margin: 0 0 6px; padding-left: 18px; }
+.ask-msg.me { align-self: flex-end; max-width: 85%; background: var(--head); color: var(--head-ink); padding: 8px 12px;
+  border-radius: 12px 12px 2px 12px; }
+.ask-msg.bot { align-self: stretch; background: var(--bg); padding: 10px 12px; border-radius: 12px 12px 12px 2px; }
+.ask-msg.wait .ask-status { color: var(--muted); font-style: italic; margin: 0; }
+.ask-msg.wait .ask-status::after { content: ""; display: inline-block; width: 1em; animation: ask-dots 1.2s steps(4) infinite; }
+@keyframes ask-dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
+@media (prefers-reduced-motion: reduce) { .ask-msg.wait .ask-status::after { animation: none; content: "…"; } }
+.ask-err { color: var(--high); font-weight: 600; }
+
+.ask-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.ask-chip { background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px;
+  font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.ask-chip:hover { border-color: var(--accent); }
+
+.ask-table { overflow-x: auto; margin: 8px 0 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.ask-table table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.ask-table th { text-align: left; color: var(--muted); font-weight: 600; padding: 5px 8px; border-bottom: 1px solid var(--line);
+  white-space: nowrap; text-transform: capitalize; }
+.ask-table td { padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; font-variant-numeric: tabular-nums;
+  white-space: nowrap; }
+.ask-table td.long { white-space: normal; min-width: 240px; }
+.ask-table tr:last-child td { border-bottom: none; }
+.ask-null { color: var(--muted); }
+.ask-more { background: none; border: none; color: var(--accent); font: inherit; font-size: 13px; font-weight: 600; padding: 2px 0; cursor: pointer; }
+.ask-note { color: var(--muted); font-size: 12px; }
+.ask-sql { margin-top: 6px; font-size: 12px; color: var(--ink2); }
+.ask-sql summary { cursor: pointer; }
+.ask-sql pre { white-space: pre-wrap; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 8px;
+  margin: 6px 0 0; font-size: 11px; max-height: 220px; overflow: auto; }
+
+.ask-form { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--line); background: var(--surface); }
+.ask-form textarea { flex: 1; resize: none; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: inherit;
+  font-size: 14px; background: var(--bg); color: var(--ink); max-height: 120px; }
+.ask-form textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.ask-form button { width: 40px; border: none; border-radius: 8px; background: var(--accent); color: #fff; font-size: 16px; cursor: pointer; }
+.ask-form button:disabled { opacity: .5; cursor: wait; }
+
+@media (max-width: 600px) {
+  .ask-panel { right: 0; bottom: 0; width: 100%; height: 100%; border-radius: 0; border: none; }
+  .ask-fab { right: 16px; bottom: 16px; }
+}
