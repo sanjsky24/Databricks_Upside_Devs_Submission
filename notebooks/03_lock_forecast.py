@@ -123,6 +123,27 @@ print(f"test {TEST_YEARS[0]}-26, 90% interval: High F1 minus same-as-now [{lmh_c
 
 # COMMAND ----------
 
+# The test results for the dashboard, replaced on every run (MLflow keeps every run)
+headline = pd.DataFrame([
+    {"question": "High-risk areas (F1)", "model": float(lmh.set_index("model").high_f1["Logistic regression"]),
+     "baseline_name": "Same as now", "baseline": float(lmh.set_index("model").high_f1["Same as now"]),
+     "diff_p05": lmh_ci[0], "diff_p95": lmh_ci[1]},
+    {"question": "New clusters caught by top 5", "model": float(new.set_index("score").caught_at_5["Logistic: " + new_set]),
+     "baseline_name": "Past clusters here", "baseline": float(new.set_index("score").caught_at_5["Past clusters here"]),
+     "diff_p05": new_ci[0], "diff_p95": new_ci[1]},
+    {"question": "New clusters caught by top 5", "model": float(new.set_index("score").caught_at_5["Logistic: " + new_set]),
+     "baseline_name": "Chance (expected)", "baseline": float(new.set_index("score").caught_at_5["Chance (expected)"]),
+     "diff_p05": None, "diff_p95": None},
+])
+for name, d in [("gold_model_test_headline", headline), ("gold_model_test_risk", lmh),
+                ("gold_model_test_new_clusters", new), ("gold_model_test_by_year", years)]:
+    d = d.assign(test=f"{TEST_YEARS[0]}-{TEST_YEARS[-1]}", test_lists=lmh_test.snapshot_date.nunique(),
+                 mlflow_run_id=run_id, git_commit=git_commit, basis_date=basis)
+    (spark.createDataFrame(d).write.mode("overwrite").option("overwriteSchema", "true")
+     .saveAsTable(f"{catalog}.{schema}.{name}"))
+
+# COMMAND ----------
+
 # Register both models in Unity Catalog (the lock below does not depend on this)
 mlflow.set_registry_uri("databricks-uc")
 for name in ["area_risk_level", "new_cluster_score"]:

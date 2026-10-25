@@ -19,6 +19,9 @@ variables:
   schema:
     description: Schema for volumes and bronze tables
     default: dengue
+  warehouse_id:
+    description: SQL warehouse the dashboard runs on
+    default: 18e372f3f7575204
 
 resources:
   jobs:
@@ -64,6 +67,12 @@ resources:
             - task_key: bronze
           pipeline_task:
             pipeline_id: ${resources.pipelines.silver.id}
+        # This week's inspection sites from the newest NEA list + newest locked forecast
+        - task_key: team_plan
+          depends_on:
+            - task_key: silver
+          notebook_task:
+            notebook_path: ./notebooks/04_team_plan.py
 
     # Trains and tests the models (MLflow), then appends a forecast for all 55 areas to the
     # append-only gold_sealed_forecasts table. Run by hand for now; refuses to lock the same
@@ -87,6 +96,17 @@ resources:
         - task_key: lock_forecast
           notebook_task:
             notebook_path: ./notebooks/03_lock_forecast.py
+        # refresh the dashboard tables and the team plan from the new forecast
+        - task_key: refresh_dashboard_tables
+          depends_on:
+            - task_key: lock_forecast
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.silver.id}
+        - task_key: team_plan
+          depends_on:
+            - task_key: refresh_dashboard_tables
+          notebook_task:
+            notebook_path: ./notebooks/04_team_plan.py
 
   pipelines:
     # Lakeflow Declarative Pipeline: bronze -> one mapped cluster history (silver_* tables)
@@ -102,6 +122,16 @@ resources:
             path: ./pipelines/silver_clusters.sql
         - file:
             path: ./pipelines/gold_area_fortnight.sql
+        - file:
+            path: ./pipelines/gold_dashboard.sql
+
+  dashboards:
+    # The "Monday screen": risk by area, new-cluster watch, team plan, track record, test results.
+    # Built from scripts/build_dashboard.py.
+    dengueradar:
+      display_name: DengueRadar
+      file_path: ./dashboards/dengueradar.lvdash.json
+      warehouse_id: ${var.warehouse_id}
 
 targets:
   # Development mode prefixes the job name with [dev <you>] and pauses its schedule,

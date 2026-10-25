@@ -1,0 +1,2426 @@
+{
+  "datasets": [
+    {
+      "name": "867c7450",
+      "displayName": "Newest locked forecast",
+      "queryLines": [
+        "SELECT area, region, lon, lat, level_today_name AS today, predicted_level AS forecast, direction,\n",
+        "       round(p_high, 2) AS p_high, CAST(new_cluster_rank AS INT) AS new_cluster_rank,\n",
+        "       round(new_cluster_score, 2) AS new_cluster_score, new_cluster_watch, why,\n",
+        "       predicted_level_num, level_today, recent_cases, n_clusters,\n",
+        "       basis_date, CAST(locked_at_utc AS DATE) AS locked_on, score_from, score_until\n",
+        "FROM workspace.dengue.gold_forecast_latest\n",
+        "ORDER BY predicted_level_num DESC, p_high DESC, new_cluster_rank\n"
+      ]
+    },
+    {
+      "name": "5e723fc5",
+      "displayName": "This week in numbers",
+      "queryLines": [
+        "SELECT\n",
+        "  count_if(predicted_level = 'High') AS high_areas,\n",
+        "  count_if(predicted_level = 'Medium') AS medium_areas,\n",
+        "  count_if(level_today > 0) AS areas_with_clusters_today,\n",
+        "  max(basis_date) AS basis_date,\n",
+        "  (SELECT plan_homes FROM workspace.dengue.gold_team_plan_summary) AS plan_homes,\n",
+        "  (SELECT round(homes_ratio, 1) FROM workspace.dengue.gold_team_plan_summary) AS plan_ratio\n",
+        "FROM workspace.dengue.gold_forecast_latest\n"
+      ]
+    },
+    {
+      "name": "4dba9e00",
+      "displayName": "Forecast dates",
+      "queryLines": [
+        "SELECT max(basis_date) AS basis_date, CAST(max(locked_at_utc) AS DATE) AS locked_on, max(score_from) AS score_from\n",
+        "FROM workspace.dengue.gold_forecast_latest\n"
+      ]
+    },
+    {
+      "name": "f4337874",
+      "displayName": "New-cluster watch",
+      "queryLines": [
+        "SELECT CAST(new_cluster_rank AS INT) AS rank, area, round(new_cluster_score, 2) AS score, why\n",
+        "FROM workspace.dengue.gold_forecast_latest\n",
+        "WHERE new_cluster_watch\n",
+        "ORDER BY new_cluster_rank\n"
+      ]
+    },
+    {
+      "name": "c35323c2",
+      "displayName": "Team plan",
+      "queryLines": [
+        "SELECT team, anchor, area, blocks, homes, blocks_near_cluster, homes_in_wolbachia, cluster_list_date\n",
+        "FROM workspace.dengue.gold_team_plan ORDER BY team\n"
+      ]
+    },
+    {
+      "name": "c19b9e44",
+      "displayName": "Team plan vs simple plan",
+      "queryLines": [
+        "SELECT 'Team planner' AS plan, plan_homes AS priority_homes FROM workspace.dengue.gold_team_plan_summary\n",
+        "UNION ALL\n",
+        "SELECT 'Top blocks, spread out', simple_homes FROM workspace.dengue.gold_team_plan_summary\n"
+      ]
+    },
+    {
+      "name": "fc4076c0",
+      "displayName": "Locked forecasts",
+      "queryLines": [
+        "SELECT basis_date, CAST(min(locked_at_utc) AS DATE) AS locked_on, min(score_from) AS score_from,\n",
+        "       min(score_until) AS score_until, max(status) AS status, max(outcome_date) AS outcome_list,\n",
+        "       count(*) AS areas,\n",
+        "       count_if(model_right) AS model_right, count_if(same_as_now_right) AS same_as_now_right,\n",
+        "       count_if(predicted_level = 'High' AND outcome_level = 'High') AS high_caught,\n",
+        "       count_if(outcome_level = 'High') AS high_outcomes,\n",
+        "       count_if(new_cluster_rank <= 5 AND new_cluster_appeared) AS new_clusters_in_top5,\n",
+        "       count_if(new_cluster_appeared) AS new_clusters,\n",
+        "       left(max(git_commit), 7) AS code\n",
+        "FROM workspace.dengue.gold_track_record\n",
+        "GROUP BY basis_date ORDER BY basis_date DESC\n"
+      ]
+    },
+    {
+      "name": "4ce7a814",
+      "displayName": "Test 2020-26: model vs simple rules",
+      "queryLines": [
+        "SELECT question, baseline_name AS compared_with, round(100 * model, 1) AS model_pct,\n",
+        "       round(100 * baseline, 1) AS baseline_pct,\n",
+        "       CASE WHEN diff_p05 IS NULL THEN '' ELSE concat(format_number(100 * diff_p05, 1), ' to +', format_number(100 * diff_p95, 1), ' pts') END AS difference_90pct,\n",
+        "       test, test_lists\n",
+        "FROM workspace.dengue.gold_model_test_headline\n"
+      ]
+    },
+    {
+      "name": "93103db1",
+      "displayName": "Test by year",
+      "queryLines": [
+        "SELECT CAST(year AS STRING) AS year, lists, high_outcomes, round(high_f1, 2) AS model_high_f1,\n",
+        "       round(same_as_now_high_f1, 2) AS same_as_now_high_f1, new_clusters,\n",
+        "       round(100 * caught_at_5, 0) AS model_caught_pct, round(100 * past_clusters_caught_at_5, 0) AS past_clusters_caught_pct\n",
+        "FROM workspace.dengue.gold_model_test_by_year ORDER BY year\n"
+      ]
+    },
+    {
+      "name": "68073b68",
+      "displayName": "Weekly national dengue cases",
+      "queryLines": [
+        "SELECT week_end, cases FROM workspace.dengue.gold_national_weekly WHERE week_end >= '2019-01-01' ORDER BY week_end\n"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "aaca2171",
+      "displayName": "This week",
+      "layout": [
+        {
+          "widget": {
+            "name": "cacfe07f",
+            "multilineTextboxSpec": {
+              "lines": [
+                "# DengueRadar · this week",
+                "Two-week dengue risk for Singapore's 55 planning areas, from the newest **locked** forecast (it can't be edited once written). Levels use NEA's alert rule: **High** = a cluster with 10+ cases, **Medium** = any active cluster, **Low** = none."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "6b8dd54e",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "5e723fc5",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "high_areas",
+                      "expression": "`high_areas`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "high_areas",
+                  "displayName": "Areas forecast High"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Areas forecast High",
+                "showDescription": true,
+                "description": "in two weeks"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 1,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "f0cb4cc8",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "5e723fc5",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "medium_areas",
+                      "expression": "`medium_areas`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "medium_areas",
+                  "displayName": "Areas forecast Medium"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Areas forecast Medium",
+                "showDescription": true,
+                "description": "in two weeks"
+              }
+            }
+          },
+          "position": {
+            "x": 1,
+            "y": 2,
+            "width": 1,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "d19987bf",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "5e723fc5",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "areas_with_clusters_today",
+                      "expression": "`areas_with_clusters_today`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "areas_with_clusters_today",
+                  "displayName": "Areas with clusters today"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Areas with clusters today",
+                "showDescription": true,
+                "description": "on the forecast's NEA list"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 2,
+            "width": 1,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "66663ee6",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4dba9e00",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "basis_date",
+                      "expression": "`basis_date`"
+                    },
+                    {
+                      "name": "locked_on",
+                      "expression": "`locked_on`"
+                    },
+                    {
+                      "name": "score_from",
+                      "expression": "`score_from`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "basis_date",
+                    "title": "NEA list used",
+                    "displayName": "NEA list used",
+                    "visible": true,
+                    "order": 100000,
+                    "type": "date",
+                    "displayAs": "datetime",
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "dateTimeFormat": "D MMM YYYY"
+                  },
+                  {
+                    "fieldName": "locked_on",
+                    "title": "Locked",
+                    "displayName": "Locked",
+                    "visible": true,
+                    "order": 100001,
+                    "type": "date",
+                    "displayAs": "datetime",
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "dateTimeFormat": "D MMM YYYY"
+                  },
+                  {
+                    "fieldName": "score_from",
+                    "title": "Scored from",
+                    "displayName": "Scored from",
+                    "visible": true,
+                    "order": 100002,
+                    "type": "date",
+                    "displayAs": "datetime",
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "dateTimeFormat": "D MMM YYYY"
+                  }
+                ]
+              },
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": true,
+              "withRowNumber": false,
+              "frame": {
+                "showTitle": true,
+                "title": "Forecast"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 2,
+            "width": 1,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "28b2b0f5",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "5e723fc5",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "plan_homes",
+                      "expression": "`plan_homes`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "plan_homes",
+                  "displayName": "Priority homes, 6 teams"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Priority homes, 6 teams",
+                "showDescription": true,
+                "description": "covered by this week's team plan"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 2,
+            "width": 1,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "104877aa",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "5e723fc5",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "plan_ratio",
+                      "expression": "`plan_ratio`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "plan_ratio",
+                  "displayName": "× the simple plan"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "× the simple plan",
+                "showDescription": true,
+                "description": "homes reached vs top blocks spread out"
+              }
+            }
+          },
+          "position": {
+            "x": 5,
+            "y": 2,
+            "width": 1,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "b6e67c78",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "867c7450",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "lon",
+                      "expression": "`lon`"
+                    },
+                    {
+                      "name": "lat",
+                      "expression": "`lat`"
+                    },
+                    {
+                      "name": "forecast",
+                      "expression": "`forecast`"
+                    },
+                    {
+                      "name": "area",
+                      "expression": "`area`"
+                    },
+                    {
+                      "name": "p_high",
+                      "expression": "`p_high`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "scatter",
+              "encodings": {
+                "x": {
+                  "fieldName": "lon",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Longitude",
+                  "axis": {
+                    "title": "west ← → east"
+                  }
+                },
+                "y": {
+                  "fieldName": "lat",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Latitude",
+                  "axis": {
+                    "title": "south ← → north"
+                  }
+                },
+                "color": {
+                  "fieldName": "forecast",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "High",
+                        "color": "#d03b3b"
+                      },
+                      {
+                        "value": "Medium",
+                        "color": "#fab219"
+                      },
+                      {
+                        "value": "Low",
+                        "color": "#a3a29a"
+                      }
+                    ]
+                  },
+                  "displayName": "Forecast"
+                },
+                "extra": [
+                  {
+                    "fieldName": "area",
+                    "displayName": "Area"
+                  },
+                  {
+                    "fieldName": "p_high",
+                    "displayName": "P(High)"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Risk map (one dot per planning area)",
+                "showDescription": true,
+                "description": "Hover a dot for the area and P(High)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 5,
+            "width": 3,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "1cea26b8",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "f4337874",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "rank",
+                      "expression": "`rank`"
+                    },
+                    {
+                      "name": "area",
+                      "expression": "`area`"
+                    },
+                    {
+                      "name": "score",
+                      "expression": "`score`"
+                    },
+                    {
+                      "name": "why",
+                      "expression": "`why`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "rank",
+                    "title": "#",
+                    "displayName": "#",
+                    "visible": true,
+                    "order": 100000,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "numberFormat": "0"
+                  },
+                  {
+                    "fieldName": "area",
+                    "title": "Area",
+                    "displayName": "Area",
+                    "visible": true,
+                    "order": 100001,
+                    "type": "string",
+                    "displayAs": "string",
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": true,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}"
+                  },
+                  {
+                    "fieldName": "score",
+                    "title": "Chance",
+                    "displayName": "Chance",
+                    "visible": true,
+                    "order": 100002,
+                    "type": "float",
+                    "displayAs": "number",
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "numberFormat": "0.00"
+                  },
+                  {
+                    "fieldName": "why",
+                    "title": "What the model sees",
+                    "displayName": "What the model sees",
+                    "visible": true,
+                    "order": 100003,
+                    "type": "string",
+                    "displayAs": "string",
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": true,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "defaultColumnWidth": 420
+                  }
+                ]
+              },
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": true,
+              "withRowNumber": false,
+              "frame": {
+                "showTitle": true,
+                "title": "New-cluster watch",
+                "showDescription": true,
+                "description": "Areas clear today, ranked by the chance a new cluster starts within two weeks"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 5,
+            "width": 3,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "59b6ff93",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "867c7450",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "area",
+                      "expression": "`area`"
+                    },
+                    {
+                      "name": "today",
+                      "expression": "`today`"
+                    },
+                    {
+                      "name": "forecast",
+                      "expression": "`forecast`"
+                    },
+                    {
+                      "name": "direction",
+                      "expression": "`direction`"
+                    },
+                    {
+                      "name": "p_high",
+                      "expression": "`p_high`"
+                    },
+                    {
+                      "name": "new_cluster_rank",
+                      "expression": "`new_cluster_rank`"
+                    },
+                    {
+                      "name": "why",
+                      "expression": "`why`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "area",
+                    "title": "Area",
+                    "displayName": "Area",
+                    "visible": true,
+                    "order": 100000,
+                    "type": "string",
+                    "displayAs": "string",
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": true,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}"
+                  },
+                  {
+                    "fieldName": "today",
+                    "title": "Today",
+                    "displayName": "Today",
+                    "visible": true,
+                    "order": 100001,
+                    "type": "string",
+                    "displayAs": "string",
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": true,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "colorMode": "text",
+                    "conditions": [
+                      {
+                        "condition": {
+                          "operator": "=",
+                          "value": "High"
+                        },
+                        "color": "#d03b3b"
+                      },
+                      {
+                        "condition": {
+                          "operator": "=",
+                          "value": "Medium"
+                        },
+                        "color": "#fab219"
+                      }
+                    ]
+                  },
+                  {
+                    "fieldName": "forecast",
+                    "title": "In 2 weeks",
+                    "displayName": "In 2 weeks",
+                    "visible": true,
+                    "order": 100002,
+                    "type": "string",
+                    "displayAs": "string",
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": true,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "colorMode": "text",
+                    "conditions": [
+                      {
+                        "condition": {
+                          "operator": "=",
+                          "value": "High"
+                        },
+                        "color": "#d03b3b"
+                      },
+                      {
+                        "condition": {
+                          "operator": "=",
+                          "value": "Medium"
+                        },
+                        "color": "#fab219"
+                      }
+                    ]
+                  },
+                  {
+                    "fieldName": "direction",
+                    "title": "Change",
+                    "displayName": "Change",
+                    "visible": true,
+                    "order": 100003,
+                    "type": "string",
+                    "displayAs": "string",
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": true,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}"
+                  },
+                  {
+                    "fieldName": "p_high",
+                    "title": "P(High)",
+                    "displayName": "P(High)",
+                    "visible": true,
+                    "order": 100004,
+                    "type": "float",
+                    "displayAs": "number",
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "numberFormat": "0.00"
+                  },
+                  {
+                    "fieldName": "new_cluster_rank",
+                    "title": "New-cluster rank",
+                    "displayName": "New-cluster rank",
+                    "visible": true,
+                    "order": 100005,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "numberFormat": "0"
+                  },
+                  {
+                    "fieldName": "why",
+                    "title": "Why? (what the model sees)",
+                    "displayName": "Why? (what the model sees)",
+                    "visible": true,
+                    "order": 100006,
+                    "type": "string",
+                    "displayAs": "string",
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": true,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "defaultColumnWidth": 520
+                  }
+                ]
+              },
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": true,
+              "withRowNumber": false,
+              "frame": {
+                "showTitle": true,
+                "title": "Risk by area",
+                "showDescription": true,
+                "description": "Every planning area, highest risk first. Reasons describe the model's inputs for the area, not its weights."
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 13,
+            "width": 6,
+            "height": 10
+          }
+        },
+        {
+          "widget": {
+            "name": "67a656b4",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Team plan",
+                "One inspection site per team, no overlaps: an anchor HDB block plus every priority block within 300 m. Priority = near a cluster on the newest NEA list (×3), near a high-mosquito area (×2), or in an area the forecast flags (×1); halved inside Wolbachia zones."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 23,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "bfc89c87",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "c35323c2",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "team",
+                      "expression": "`team`"
+                    },
+                    {
+                      "name": "anchor",
+                      "expression": "`anchor`"
+                    },
+                    {
+                      "name": "area",
+                      "expression": "`area`"
+                    },
+                    {
+                      "name": "blocks",
+                      "expression": "`blocks`"
+                    },
+                    {
+                      "name": "homes",
+                      "expression": "`homes`"
+                    },
+                    {
+                      "name": "blocks_near_cluster",
+                      "expression": "`blocks_near_cluster`"
+                    },
+                    {
+                      "name": "homes_in_wolbachia",
+                      "expression": "`homes_in_wolbachia`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "team",
+                    "title": "Team",
+                    "displayName": "Team",
+                    "visible": true,
+                    "order": 100000,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "numberFormat": "0"
+                  },
+                  {
+                    "fieldName": "anchor",
+                    "title": "Start at",
+                    "displayName": "Start at",
+                    "visible": true,
+                    "order": 100001,
+                    "type": "string",
+                    "displayAs": "string",
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": true,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}"
+                  },
+                  {
+                    "fieldName": "area",
+                    "title": "Area",
+                    "displayName": "Area",
+                    "visible": true,
+                    "order": 100002,
+                    "type": "string",
+                    "displayAs": "string",
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": true,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}"
+                  },
+                  {
+                    "fieldName": "blocks",
+                    "title": "Blocks",
+                    "displayName": "Blocks",
+                    "visible": true,
+                    "order": 100003,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "numberFormat": "0"
+                  },
+                  {
+                    "fieldName": "homes",
+                    "title": "Homes",
+                    "displayName": "Homes",
+                    "visible": true,
+                    "order": 100004,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "numberFormat": "0"
+                  },
+                  {
+                    "fieldName": "blocks_near_cluster",
+                    "title": "Blocks near a cluster",
+                    "displayName": "Blocks near a cluster",
+                    "visible": true,
+                    "order": 100005,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "numberFormat": "0"
+                  },
+                  {
+                    "fieldName": "homes_in_wolbachia",
+                    "title": "Homes in Wolbachia zones",
+                    "displayName": "Homes in Wolbachia zones",
+                    "visible": true,
+                    "order": 100006,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "numberFormat": "0"
+                  }
+                ]
+              },
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": true,
+              "withRowNumber": false,
+              "frame": {
+                "showTitle": true,
+                "title": "This week's sites"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 25,
+            "width": 4,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "b0671119",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "c19b9e44",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "plan",
+                      "expression": "`plan`"
+                    },
+                    {
+                      "name": "priority_homes",
+                      "expression": "`priority_homes`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "plan",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Plan"
+                },
+                "y": {
+                  "fieldName": "priority_homes",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Priority homes reached"
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Priority homes reached by 6 teams"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 25,
+            "width": 2,
+            "height": 7
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "7651d0ca",
+      "displayName": "Track record & tests",
+      "layout": [
+        {
+          "widget": {
+            "name": "fa9aec10",
+            "multilineTextboxSpec": {
+              "lines": [
+                "# Track record & tests",
+                "Every forecast is locked in an append-only table before the outcome is known, then scored against NEA's first list 14–35 days later. The test below predicts every year from 2020 using only the years before it."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "e3527f8f",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "fc4076c0",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "basis_date",
+                      "expression": "`basis_date`"
+                    },
+                    {
+                      "name": "locked_on",
+                      "expression": "`locked_on`"
+                    },
+                    {
+                      "name": "score_from",
+                      "expression": "`score_from`"
+                    },
+                    {
+                      "name": "status",
+                      "expression": "`status`"
+                    },
+                    {
+                      "name": "outcome_list",
+                      "expression": "`outcome_list`"
+                    },
+                    {
+                      "name": "model_right",
+                      "expression": "`model_right`"
+                    },
+                    {
+                      "name": "same_as_now_right",
+                      "expression": "`same_as_now_right`"
+                    },
+                    {
+                      "name": "high_caught",
+                      "expression": "`high_caught`"
+                    },
+                    {
+                      "name": "high_outcomes",
+                      "expression": "`high_outcomes`"
+                    },
+                    {
+                      "name": "new_clusters_in_top5",
+                      "expression": "`new_clusters_in_top5`"
+                    },
+                    {
+                      "name": "new_clusters",
+                      "expression": "`new_clusters`"
+                    },
+                    {
+                      "name": "code",
+                      "expression": "`code`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "basis_date",
+                    "title": "NEA list",
+                    "displayName": "NEA list",
+                    "visible": true,
+                    "order": 100000,
+                    "type": "date",
+                    "displayAs": "datetime",
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "dateTimeFormat": "D MMM YYYY"
+                  },
+                  {
+                    "fieldName": "locked_on",
+                    "title": "Locked",
+                    "displayName": "Locked",
+                    "visible": true,
+                    "order": 100001,
+                    "type": "date",
+                    "displayAs": "datetime",
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "dateTimeFormat": "D MMM YYYY"
+                  },
+                  {
+                    "fieldName": "score_from",
+                    "title": "Scored from",
+                    "displayName": "Scored from",
+                    "visible": true,
+                    "order": 100002,
+                    "type": "date",
+                    "displayAs": "datetime",
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "dateTimeFormat": "D MMM YYYY"
+                  },
+                  {
+                    "fieldName": "status",
+                    "title": "Status",
+                    "displayName": "Status",
+                    "visible": true,
+                    "order": 100003,
+                    "type": "string",
+                    "displayAs": "string",
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": true,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}"
+                  },
+                  {
+                    "fieldName": "outcome_list",
+                    "title": "Outcome list",
+                    "displayName": "Outcome list",
+                    "visible": true,
+                    "order": 100004,
+                    "type": "date",
+                    "displayAs": "datetime",
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "dateTimeFormat": "D MMM YYYY"
+                  },
+                  {
+                    "fieldName": "model_right",
+                    "title": "Areas right: model",
+                    "displayName": "Areas right: model",
+                    "visible": true,
+                    "order": 100005,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "numberFormat": "0"
+                  },
+                  {
+                    "fieldName": "same_as_now_right",
+                    "title": "…: same as now",
+                    "displayName": "…: same as now",
+                    "visible": true,
+                    "order": 100006,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "numberFormat": "0"
+                  },
+                  {
+                    "fieldName": "high_caught",
+                    "title": "High caught",
+                    "displayName": "High caught",
+                    "visible": true,
+                    "order": 100007,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "numberFormat": "0"
+                  },
+                  {
+                    "fieldName": "high_outcomes",
+                    "title": "High outcomes",
+                    "displayName": "High outcomes",
+                    "visible": true,
+                    "order": 100008,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "numberFormat": "0"
+                  },
+                  {
+                    "fieldName": "new_clusters_in_top5",
+                    "title": "New clusters in top 5",
+                    "displayName": "New clusters in top 5",
+                    "visible": true,
+                    "order": 100009,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "numberFormat": "0"
+                  },
+                  {
+                    "fieldName": "new_clusters",
+                    "title": "New clusters",
+                    "displayName": "New clusters",
+                    "visible": true,
+                    "order": 100010,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "numberFormat": "0"
+                  },
+                  {
+                    "fieldName": "code",
+                    "title": "Code",
+                    "displayName": "Code",
+                    "visible": true,
+                    "order": 100011,
+                    "type": "string",
+                    "displayAs": "string",
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": true,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}"
+                  }
+                ]
+              },
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": true,
+              "withRowNumber": false,
+              "frame": {
+                "showTitle": true,
+                "title": "Locked forecasts",
+                "showDescription": true,
+                "description": "status = waiting until NEA publishes a list in the scoring window"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "b01252f6",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4ce7a814",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "question",
+                      "expression": "`question`"
+                    },
+                    {
+                      "name": "compared_with",
+                      "expression": "`compared_with`"
+                    },
+                    {
+                      "name": "model_pct",
+                      "expression": "`model_pct`"
+                    },
+                    {
+                      "name": "baseline_pct",
+                      "expression": "`baseline_pct`"
+                    },
+                    {
+                      "name": "difference_90pct",
+                      "expression": "`difference_90pct`"
+                    },
+                    {
+                      "name": "test_lists",
+                      "expression": "`test_lists`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "question",
+                    "title": "Question",
+                    "displayName": "Question",
+                    "visible": true,
+                    "order": 100000,
+                    "type": "string",
+                    "displayAs": "string",
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": true,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}"
+                  },
+                  {
+                    "fieldName": "compared_with",
+                    "title": "Compared with",
+                    "displayName": "Compared with",
+                    "visible": true,
+                    "order": 100001,
+                    "type": "string",
+                    "displayAs": "string",
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": true,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}"
+                  },
+                  {
+                    "fieldName": "model_pct",
+                    "title": "Model %",
+                    "displayName": "Model %",
+                    "visible": true,
+                    "order": 100002,
+                    "type": "float",
+                    "displayAs": "number",
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "numberFormat": "0.00"
+                  },
+                  {
+                    "fieldName": "baseline_pct",
+                    "title": "Rule %",
+                    "displayName": "Rule %",
+                    "visible": true,
+                    "order": 100003,
+                    "type": "float",
+                    "displayAs": "number",
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "numberFormat": "0.00"
+                  },
+                  {
+                    "fieldName": "difference_90pct",
+                    "title": "Difference (90% range)",
+                    "displayName": "Difference (90% range)",
+                    "visible": true,
+                    "order": 100004,
+                    "type": "string",
+                    "displayAs": "string",
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": true,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}"
+                  },
+                  {
+                    "fieldName": "test_lists",
+                    "title": "Test lists",
+                    "displayName": "Test lists",
+                    "visible": true,
+                    "order": 100005,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "numberFormat": "0"
+                  }
+                ]
+              },
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": true,
+              "withRowNumber": false,
+              "frame": {
+                "showTitle": true,
+                "title": "Test 2020–26: model vs simple rules",
+                "showDescription": true,
+                "description": "High-risk row is F1 ×100 (balance of catching High areas and avoiding false alarms). Range = model minus rule, resampling list dates."
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 7,
+            "width": 6,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "f62c0558",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "93103db1",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "year",
+                      "expression": "`year`"
+                    },
+                    {
+                      "name": "lists",
+                      "expression": "`lists`"
+                    },
+                    {
+                      "name": "high_outcomes",
+                      "expression": "`high_outcomes`"
+                    },
+                    {
+                      "name": "model_high_f1",
+                      "expression": "`model_high_f1`"
+                    },
+                    {
+                      "name": "same_as_now_high_f1",
+                      "expression": "`same_as_now_high_f1`"
+                    },
+                    {
+                      "name": "new_clusters",
+                      "expression": "`new_clusters`"
+                    },
+                    {
+                      "name": "model_caught_pct",
+                      "expression": "`model_caught_pct`"
+                    },
+                    {
+                      "name": "past_clusters_caught_pct",
+                      "expression": "`past_clusters_caught_pct`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "year",
+                    "title": "Year",
+                    "displayName": "Year",
+                    "visible": true,
+                    "order": 100000,
+                    "type": "string",
+                    "displayAs": "string",
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": true,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}"
+                  },
+                  {
+                    "fieldName": "lists",
+                    "title": "Lists",
+                    "displayName": "Lists",
+                    "visible": true,
+                    "order": 100001,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "numberFormat": "0"
+                  },
+                  {
+                    "fieldName": "high_outcomes",
+                    "title": "High outcomes",
+                    "displayName": "High outcomes",
+                    "visible": true,
+                    "order": 100002,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "numberFormat": "0"
+                  },
+                  {
+                    "fieldName": "model_high_f1",
+                    "title": "High F1: model",
+                    "displayName": "High F1: model",
+                    "visible": true,
+                    "order": 100003,
+                    "type": "float",
+                    "displayAs": "number",
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "numberFormat": "0.00"
+                  },
+                  {
+                    "fieldName": "same_as_now_high_f1",
+                    "title": "…: same as now",
+                    "displayName": "…: same as now",
+                    "visible": true,
+                    "order": 100004,
+                    "type": "float",
+                    "displayAs": "number",
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "numberFormat": "0.00"
+                  },
+                  {
+                    "fieldName": "new_clusters",
+                    "title": "New clusters",
+                    "displayName": "New clusters",
+                    "visible": true,
+                    "order": 100005,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "numberFormat": "0"
+                  },
+                  {
+                    "fieldName": "model_caught_pct",
+                    "title": "Caught in top 5: model %",
+                    "displayName": "Caught in top 5: model %",
+                    "visible": true,
+                    "order": 100006,
+                    "type": "float",
+                    "displayAs": "number",
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "numberFormat": "0.00"
+                  },
+                  {
+                    "fieldName": "past_clusters_caught_pct",
+                    "title": "…: past clusters %",
+                    "displayName": "…: past clusters %",
+                    "visible": true,
+                    "order": 100007,
+                    "type": "float",
+                    "displayAs": "number",
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "no",
+                      "yes"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "linkOpenInNewTab": true,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "numberFormat": "0.00"
+                  }
+                ]
+              },
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": true,
+              "withRowNumber": false,
+              "frame": {
+                "showTitle": true,
+                "title": "Test by year",
+                "showDescription": true,
+                "description": "2021 and 2023 have no NEA list with a known outcome two weeks later"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 11,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "120f7b06",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "68073b68",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "week_end",
+                      "expression": "`week_end`"
+                    },
+                    {
+                      "name": "cases",
+                      "expression": "`cases`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "week_end",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Week ending"
+                },
+                "y": {
+                  "fieldName": "cases",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Cases"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Weekly dengue cases, Singapore",
+                "showDescription": true,
+                "description": "MOH and CDA weekly bulletins, no missing weeks"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 17,
+            "width": 6,
+            "height": 6
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    }
+  }
+}
