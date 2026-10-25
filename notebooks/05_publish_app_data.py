@@ -13,6 +13,7 @@
 # MAGIC | `clusters` | active clusters on the newest NEA list (`silver_clusters`) |
 # MAGIC | `blocks`, `team_plan` | `gold_block_priority`, `gold_team_plan` |
 # MAGIC | `track_record`, `test_headline`, `test_by_year`, `weekly_cases` | gold track record, test results, national weekly cases |
+# MAGIC | `retro_check` | `gold_retro_check`: the forecast made afterwards from NEA's 14 Oct list vs NEA's newest list |
 # MAGIC | `meta` | dates the screen shows |
 # MAGIC
 # MAGIC Each table is replaced inside one transaction, so the app never sees a half-written table.
@@ -71,6 +72,7 @@ QUERIES = {
                count_if(new_cluster_rank <= 5 AND new_cluster_appeared) AS new_clusters_in_top5,
                count_if(new_cluster_appeared) AS new_clusters, left(max(git_commit), 7) AS code
         FROM {T}.gold_track_record GROUP BY forecast_id, basis_date""",
+    "retro_check": f"SELECT * FROM {T}.gold_retro_check",
     "test_headline": f"SELECT * FROM {T}.gold_model_test_headline",
     "test_by_year": f"SELECT * FROM {T}.gold_model_test_by_year",
     "weekly_cases": f"SELECT week_end, cases FROM {T}.gold_national_weekly WHERE week_end >= '2022-01-01'",

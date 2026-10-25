@@ -73,10 +73,17 @@ resources:
             - task_key: silver
           notebook_task:
             notebook_path: ./notebooks/04_team_plan.py
+        # The forecast made afterwards from NEA's 14 Oct list, compared with NEA's newest list
+        - task_key: retro_forecast
+          depends_on:
+            - task_key: silver
+          notebook_task:
+            notebook_path: ./notebooks/06_retro_forecast.py
         # Copy what the app shows into Lakebase
         - task_key: publish_app_data
           depends_on:
             - task_key: team_plan
+            - task_key: retro_forecast
           notebook_task:
             notebook_path: ./notebooks/05_publish_app_data.py
             base_parameters:
@@ -115,9 +122,15 @@ resources:
             - task_key: refresh_dashboard_tables
           notebook_task:
             notebook_path: ./notebooks/04_team_plan.py
+        - task_key: retro_forecast
+          depends_on:
+            - task_key: refresh_dashboard_tables
+          notebook_task:
+            notebook_path: ./notebooks/06_retro_forecast.py
         - task_key: publish_app_data
           depends_on:
             - task_key: team_plan
+            - task_key: retro_forecast
           notebook_task:
             notebook_path: ./notebooks/05_publish_app_data.py
             base_parameters:

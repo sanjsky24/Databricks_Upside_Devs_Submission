@@ -49,6 +49,7 @@ function init() {
   drawMap();
   watchList();
   riskTable();
+  retro();
   track();
   tests();
   weekly();
@@ -291,16 +292,49 @@ function riskTable(all = false) {
 }
 
 // ------------------------------------------------------------------ proof
+function retro() {
+  const r = D.retro_check || [];
+  if (!r.length) { $("retro").innerHTML = `<p class="sub">No retrospective forecast yet.</p>`; return; }
+  const f = r[0], n = r.length, final = f.final === true || f.final === "true";
+  const count = (k) => r.filter((x) => x[k] === true || x[k] === "true").length;
+  $("retro-title").textContent = `How the forecast from NEA's ${day(f.basis_date)} list is doing`;
+  $("retro-sub").textContent = (final
+    ? `Two-week check against NEA's list of ${day(f.compare_date)} (${f.days_later} days later).`
+    : `So far: NEA's list of ${day(f.compare_date)}, ${f.days_later} days later. The two-week check uses NEA's first list from ${day(f.final_check_from)}.`) +
+    ` Made afterwards using only data known on ${day(f.basis_date)}, so it is not one of the locked forecasts.`;
+  const calledHigh = r.filter((x) => x.predicted_level === "High");
+  const stillHigh = calledHigh.filter((x) => x.level_now === "High");
+  const newOnes = r.filter((x) => x.new_cluster_appeared === true || x.new_cluster_appeared === "true");
+  const inTop5 = newOnes.filter((x) => x.new_cluster_rank && x.new_cluster_rank <= 5);
+  const shown = r.filter((x) => x.level_then !== "Low" || x.predicted_level !== "Low" || x.level_now !== "Low" || (x.new_cluster_rank && x.new_cluster_rank <= 5))
+    .sort((a, b) => LEVEL_NUM[b.predicted_level] - LEVEL_NUM[a.predicted_level] || LEVEL_NUM[b.level_now] - LEVEL_NUM[a.level_now] ||
+      (a.new_cluster_rank ?? 99) - (b.new_cluster_rank ?? 99));
+  const mark = (ok) => `<span class="${ok ? "ok" : "miss"}">${ok ? "✓ Right" : "✗ Wrong"}</span>`;
+  $("retro").innerHTML = `
+    <div class="retro-stats">
+      <div><b>${count("model_right")}/${n}</b>areas right<span>"same as now": ${count("same_as_now_right")}/${n}</span></div>
+      <div><b>${stillHigh.length}/${calledHigh.length}</b>called High, High now<span>${esc(calledHigh.map((x) => x.area).join(", ") || "none")}</span></div>
+      <div><b>${inTop5.length}/${newOnes.length}</b>new clusters in its top 5<span>${esc(newOnes.map((x) => x.area).join(", ") || "no new clusters yet")}</span></div>
+    </div>
+    <div class="table-wrap"><table class="risk retro-table"><thead><tr><th>Area</th><th>${esc(day(f.basis_date))}</th>
+      <th>Forecast</th><th>${esc(day(f.compare_date))}</th><th></th></tr></thead><tbody>
+      ${shown.map((x) => `<tr data-pa="${esc(x.planning_area)}"><td><b>${esc(x.area)}</b>${x.new_cluster_rank && x.new_cluster_rank <= 5 ? ` <span class="rank-inline">#${x.new_cluster_rank}</span>` : ""}</td>
+        <td>${chip(x.level_then)}</td><td>${chip(x.predicted_level)}</td><td>${chip(x.level_now)}</td>
+        <td>${mark(x.model_right === true || x.model_right === "true")}</td></tr>`).join("")}</tbody></table></div>
+    <p class="note">Every other area: forecast Low, Low on ${esc(day(f.compare_date))}.</p>`;
+  $("retro").querySelectorAll("tbody tr").forEach((tr) => tr.addEventListener("click", () => {
+    selectArea(tr.dataset.pa, true);
+    $("map").scrollIntoView({ behavior: "smooth", block: "center" });
+  }));
+}
+
 function track() {
-  const rows = [...D.track_record].sort((a, b) => (a.basis_date < b.basis_date ? 1 : -1));
-  $("track").innerHTML = rows.map((r) => {
-    const scored = r.status === "scored";
-    const detail = scored
-      ? `Right in ${r.model_right}/${r.areas} areas vs ${r.same_as_now_right} for "same as now" · High caught ${r.high_caught}/${r.high_outcomes} · new clusters in top 5: ${r.new_clusters_in_top5}/${r.new_clusters}`
-      : `Waiting for NEA's first list from ${day(r.score_from)} (window ends ${day(r.score_until)})`;
-    return `<div class="track-row"><span>NEA list <b>${day(r.basis_date)}</b> · locked ${day(r.locked_on)} · code ${esc(r.code)}</span>
-      <span class="st">${scored ? "Scored" : "Waiting"}</span><span class="d">${esc(detail)}</span></div>`;
-  }).join("") || `<p class="sub">No locked forecasts yet.</p>`;
+  const rows = [...D.track_record].sort((a, b) => (a.basis_date < b.basis_date ? -1 : 1));
+  if (!rows.length) { $("track").innerHTML = ""; return; }
+  $("track").innerHTML = `<p class="note"><b>Locked forecasts</b> (append-only, written before the outcome): ` +
+    rows.map((r) => r.status === "scored"
+      ? `NEA list ${day(r.basis_date)}: right in ${r.model_right}/${r.areas} areas vs ${r.same_as_now_right} for "same as now"`
+      : `NEA list ${day(r.basis_date)}, scored from ${day(r.score_from)}`).map(esc).join(" · ") + `.</p>`;
 }
 
 function tests() {

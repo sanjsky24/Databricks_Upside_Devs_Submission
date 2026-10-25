@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TABLES = ["meta", "areas", "wolbachia_zones", "high_aedes", "clusters", "blocks", "team_plan",
-          "track_record", "test_headline", "test_by_year", "weekly_cases"]
+          "track_record", "retro_check", "test_headline", "test_by_year", "weekly_cases"]
 GEOMETRY = {"areas", "wolbachia_zones"}
 CACHE_SECONDS = 300
 
