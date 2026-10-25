@@ -4,8 +4,8 @@ GET /            the page (static/index.html)
 GET /api/data    everything the page shows, as one JSON document
 
 Data lives in Lakebase Postgres, schema `dengueradar`, written by notebooks/05_publish_app_data.py.
-On Databricks Apps the database resource sets PGHOST / PGDATABASE / PGUSER / PGPORT / PGSSLMODE, and
-the app's service principal signs in with a short-lived OAuth token.
+On Databricks Apps the database resource sets PGHOST / PGDATABASE / PGUSER / PGPORT, and the app's
+service principal signs in with a short-lived OAuth token (pg8000, a pure-Python driver).
 
 Local preview without Lakebase: DENGUERADAR_SAMPLE=/path/to/data.json python app.py
 """
@@ -32,8 +32,10 @@ _cache = {"at": 0.0, "data": None}
 
 
 def _connect():
-    import psycopg
+    import ssl
+
     from databricks.sdk import WorkspaceClient
+    from pg8000.native import Connection  # pure Python, no libpq to clash with
 
     w = WorkspaceClient()
     host, user = os.environ.get("PGHOST"), os.environ.get("PGUSER")
@@ -41,9 +43,9 @@ def _connect():
         host = w.database.get_database_instance(name=os.environ.get("LAKEBASE_INSTANCE", "dengueradar")).read_write_dns
     if not user:
         user = w.config.client_id or w.current_user.me().user_name
-    return psycopg.connect(host=host, dbname=os.environ.get("PGDATABASE", "databricks_postgres"), user=user,
-                           port=os.environ.get("PGPORT", "5432"), sslmode=os.environ.get("PGSSLMODE", "require"),
-                           password=w.config.oauth_token().access_token)
+    return Connection(user=user, host=host, port=int(os.environ.get("PGPORT", "5432")),
+                      database=os.environ.get("PGDATABASE", "databricks_postgres"),
+                      password=w.config.oauth_token().access_token, ssl_context=ssl.create_default_context())
 
 
 def _plain(v):
@@ -58,15 +60,18 @@ def _load():
         with open(sample) as f:
             return json.load(f)
     out = {}
-    with _connect() as conn, conn.cursor() as cur:
+    conn = _connect()
+    try:
         for t in TABLES:
-            cur.execute(f"SELECT * FROM dengueradar.{t}")
-            cols = [c.name for c in cur.description]
-            rows = [dict(zip(cols, map(_plain, r))) for r in cur.fetchall()]
+            result = conn.run(f"SELECT * FROM dengueradar.{t}")
+            cols = [c["name"] for c in conn.columns]
+            rows = [dict(zip(cols, map(_plain, r))) for r in result]
             if t in GEOMETRY:
                 for r in rows:
                     r["geometry"] = json.loads(r["geometry"]) if r.get("geometry") else None
             out[t] = rows
+    finally:
+        conn.close()
     out["meta"] = out["meta"][0] if out["meta"] else {}
     return out
 

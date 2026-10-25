@@ -19,7 +19,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install -q -U "databricks-sdk>=0.60" "psycopg[binary]>=3.2"
+# MAGIC %pip install -q -U "databricks-sdk>=0.60" "pg8000>=1.31"
 
 # COMMAND ----------
 
@@ -87,18 +87,21 @@ for name, d in frames.items():
 
 # COMMAND ----------
 
+import io
+import ssl
 import uuid
 
 import numpy as np
 import pandas as pd
-import psycopg
 from databricks.sdk import WorkspaceClient
+# pure-Python driver: psycopg's bundled libpq crashed the notebook process (SIGABRT) on serverless
+from pg8000.native import Connection
 
 w = WorkspaceClient()
 db = w.database.get_database_instance(name=instance)
 cred = w.database.generate_database_credential(request_id=str(uuid.uuid4()), instance_names=[instance])
-conn = psycopg.connect(host=db.read_write_dns, dbname="databricks_postgres", user=w.current_user.me().user_name,
-                       password=cred.token, sslmode="require", autocommit=True)
+conn = Connection(user=w.current_user.me().user_name, host=db.read_write_dns, database="databricks_postgres",
+                  password=cred.token, ssl_context=ssl.create_default_context())
 
 
 def pg_type(s):
@@ -127,17 +130,37 @@ def clean(v):
     return v
 
 
-with conn.transaction():
-    conn.execute("CREATE SCHEMA IF NOT EXISTS dengueradar")
-    conn.execute("GRANT USAGE ON SCHEMA dengueradar TO PUBLIC")
+def field(v):
+    """One CSV field for COPY: NULL is an unquoted empty field, text is always quoted."""
+    v = clean(v)
+    if v is None:
+        return ""
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (int, float)):
+        return repr(v)
+    if hasattr(v, "isoformat"):
+        v = v.isoformat()
+    return '"' + str(v).replace('"', '""') + '"'
+
+
+def to_csv(d):
+    return io.StringIO("".join(",".join(field(v) for v in row) + "\n" for row in d.itertuples(index=False)))
+
+
+conn.run("CREATE SCHEMA IF NOT EXISTS dengueradar")
+conn.run("GRANT USAGE ON SCHEMA dengueradar TO PUBLIC")
 for name, d in frames.items():
     cols = ", ".join(f'"{c}" {pg_type(d[c])}' for c in d.columns)
-    with conn.transaction():  # readers see the old table until this commits
-        conn.execute(f"DROP TABLE IF EXISTS dengueradar.{name}")
-        conn.execute(f"CREATE TABLE dengueradar.{name} ({cols})")
-        with conn.cursor() as cur, cur.copy(f"COPY dengueradar.{name} FROM STDIN") as cp:
-            for row in d.itertuples(index=False):
-                cp.write_row([clean(v) for v in row])
-        conn.execute(f"GRANT SELECT ON dengueradar.{name} TO PUBLIC")
+    conn.run("BEGIN")  # readers see the old table until COMMIT
+    try:
+        conn.run(f"DROP TABLE IF EXISTS dengueradar.{name}")
+        conn.run(f"CREATE TABLE dengueradar.{name} ({cols})")
+        conn.run(f"COPY dengueradar.{name} FROM STDIN WITH (FORMAT csv)", stream=to_csv(d))
+        conn.run(f"GRANT SELECT ON dengueradar.{name} TO PUBLIC")
+        conn.run("COMMIT")
+    except Exception:
+        conn.run("ROLLBACK")
+        raise
     print(f"published dengueradar.{name}: {len(d)} rows")
 conn.close()
