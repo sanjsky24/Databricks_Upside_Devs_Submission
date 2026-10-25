@@ -63,7 +63,7 @@ def plan(blocks, teams=6, radius=300.0):
         })
 
     simple, anchors = np.zeros(len(b), bool), []
-    for j in np.argsort(-w):
+    for j in np.argsort(-w, kind="stable"):  # stable, so ties break the same way as the app's planner
         if len(anchors) == teams:
             break
         if all((x[j] - x[a]) ** 2 + (y[j] - y[a]) ** 2 > (2 * radius) ** 2 for a in anchors):

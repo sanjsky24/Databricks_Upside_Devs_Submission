@@ -1,0 +1,5 @@
+# Databricks App: the DengueRadar Monday screen. Reads Lakebase (resource "lakebase" in databricks.yml).
+command: ["python", "app.py"]
+env:
+  - name: LAKEBASE_INSTANCE
+    value: dengueradar

@@ -42,10 +42,10 @@ SELECT
   count_if(predicted_level = 'High') AS high_areas,
   count_if(predicted_level = 'Medium') AS medium_areas,
   count_if(level_today > 0) AS areas_with_clusters_today,
-  max(basis_date) AS basis_date,
-  (SELECT plan_homes FROM {T}.gold_team_plan_summary) AS plan_homes,
-  (SELECT round(homes_ratio, 1) FROM {T}.gold_team_plan_summary) AS plan_ratio
+  max(basis_date) AS basis_date
 FROM {T}.gold_forecast_latest"""),
+    "plan_headline": ("Team plan in numbers", f"""
+SELECT plan_homes, round(homes_ratio, 1) AS plan_ratio FROM {T}.gold_team_plan_summary"""),
     "basis": ("Forecast dates", f"""
 SELECT max(basis_date) AS basis_date, CAST(max(locked_at_utc) AS DATE) AS locked_on, max(score_from) AS score_from
 FROM {T}.gold_forecast_latest"""),
@@ -181,8 +181,8 @@ monday = [
     table("t_basis", "basis", [("basis_date", "NEA list used", "date"), ("locked_on", "Locked", "date"),
                                ("score_from", "Scored from", "date")],
           "Forecast", None, {"x": 3, "y": 2, "width": 1, "height": 3}),
-    counter("c_homes", "headline", "plan_homes", "Priority homes, 6 teams", "covered by this week's team plan", {"x": 4, "y": 2, "width": 1, "height": 3}),
-    counter("c_ratio", "headline", "plan_ratio", "× the simple plan", "homes reached vs top blocks spread out", {"x": 5, "y": 2, "width": 1, "height": 3}),
+    counter("c_homes", "plan_headline", "plan_homes", "Priority homes, 6 teams", "covered by this week's team plan", {"x": 4, "y": 2, "width": 1, "height": 3}),
+    counter("c_ratio", "plan_headline", "plan_ratio", "× the simple plan", "homes reached vs top blocks spread out", {"x": 5, "y": 2, "width": 1, "height": 3}),
     {"widget": {"name": hid("w", "map"), "queries": query("forecast", ["lon", "lat", "forecast", "area", "p_high"]),
                 "spec": {"version": 3, "widgetType": "scatter",
                          "encodings": {

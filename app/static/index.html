@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DengueRadar</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">DengueRadar <span class="sep">·</span> <span id="today">Monday screen</span></div>
+    <div class="basis" id="basis">Loading…</div>
+  </header>
+
+  <main>
+    <section class="kpis" id="kpis"></section>
+
+    <section class="grid-main">
+      <div class="card map-card">
+        <div class="card-head">
+          <h2>Risk in two weeks, by planning area</h2>
+          <div class="layers" id="layers"></div>
+        </div>
+        <div id="map" role="img" aria-label="Map of Singapore's planning areas coloured by forecast risk level"></div>
+        <div class="legend" id="legend"></div>
+      </div>
+
+      <aside class="card side">
+        <div class="tabs" role="tablist">
+          <button role="tab" data-tab="why" class="on">Why?</button>
+          <button role="tab" data-tab="watch">New-cluster watch</button>
+          <button role="tab" data-tab="plan">Team planner</button>
+        </div>
+        <div class="tab-body" id="tab-why"></div>
+        <div class="tab-body" id="tab-watch" hidden></div>
+        <div class="tab-body" id="tab-plan" hidden>
+          <label class="slider">Inspection teams <output id="teams-out">6</output>
+            <input type="range" id="teams" min="1" max="12" value="6">
+          </label>
+          <div id="plan-summary"></div>
+          <ol class="sites" id="sites"></ol>
+          <p class="note">Each team covers one 300 m site, no overlaps. Priority = near a cluster on NEA's newest list (×3),
+            near a high-mosquito area (×2), or in an area the forecast flags (×1); halved inside Wolbachia zones.
+            Compared with sending teams to the top-priority blocks spread ≥600 m apart.</p>
+        </div>
+      </aside>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>Risk by area</h2><p class="sub">Highest risk first. Reasons describe what the model was given for the area, not its weights.</p></div>
+      <div class="table-wrap"><table class="risk" id="risk"></table></div>
+      <button class="more" id="risk-more" hidden></button>
+    </section>
+
+    <section class="grid-proof">
+      <div class="card">
+        <div class="card-head"><h2>Locked forecasts</h2><p class="sub">Written to an append-only table before the outcome is known, then scored against NEA's first list 14–35 days later.</p></div>
+        <div id="track"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Tested on every year from 2020</h2><p class="sub" id="test-sub"></p></div>
+        <div id="tests"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Weekly dengue cases, Singapore</h2><p class="sub">MOH and CDA weekly bulletins, no missing weeks</p></div>
+        <div id="weekly" class="weekly"></div>
+      </div>
+    </section>
+
+    <footer>Data: NEA dengue clusters (data.gov.sg, Internet Archive, sgcharts), NEA Wolbachia &amp; high-Aedes areas, HDB, URA,
+      MOH/CDA bulletins. Served from Lakebase · The Upside Devs.</footer>
+  </main>
+
+  <div class="tooltip" id="tip" hidden></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

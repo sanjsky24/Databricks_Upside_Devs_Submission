@@ -21,10 +21,15 @@
         "  count_if(predicted_level = 'High') AS high_areas,\n",
         "  count_if(predicted_level = 'Medium') AS medium_areas,\n",
         "  count_if(level_today > 0) AS areas_with_clusters_today,\n",
-        "  max(basis_date) AS basis_date,\n",
-        "  (SELECT plan_homes FROM workspace.dengue.gold_team_plan_summary) AS plan_homes,\n",
-        "  (SELECT round(homes_ratio, 1) FROM workspace.dengue.gold_team_plan_summary) AS plan_ratio\n",
+        "  max(basis_date) AS basis_date\n",
         "FROM workspace.dengue.gold_forecast_latest\n"
+      ]
+    },
+    {
+      "name": "6db2730c",
+      "displayName": "Team plan in numbers",
+      "queryLines": [
+        "SELECT plan_homes, round(homes_ratio, 1) AS plan_ratio FROM workspace.dengue.gold_team_plan_summary\n"
       ]
     },
     {
@@ -399,7 +404,7 @@
               {
                 "name": "main_query",
                 "query": {
-                  "datasetName": "5e723fc5",
+                  "datasetName": "6db2730c",
                   "disaggregated": true,
                   "fields": [
                     {
@@ -441,7 +446,7 @@
               {
                 "name": "main_query",
                 "query": {
-                  "datasetName": "5e723fc5",
+                  "datasetName": "6db2730c",
                   "disaggregated": true,
                   "fields": [
                     {

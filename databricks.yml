@@ -73,6 +73,14 @@ resources:
             - task_key: silver
           notebook_task:
             notebook_path: ./notebooks/04_team_plan.py
+        # Copy what the app shows into Lakebase
+        - task_key: publish_app_data
+          depends_on:
+            - task_key: team_plan
+          notebook_task:
+            notebook_path: ./notebooks/05_publish_app_data.py
+            base_parameters:
+              lakebase_instance: ${resources.database_instances.lakebase.name}
 
     # Trains and tests the models (MLflow), then appends a forecast for all 55 areas to the
     # append-only gold_sealed_forecasts table. Run by hand for now; refuses to lock the same
@@ -107,6 +115,13 @@ resources:
             - task_key: refresh_dashboard_tables
           notebook_task:
             notebook_path: ./notebooks/04_team_plan.py
+        - task_key: publish_app_data
+          depends_on:
+            - task_key: team_plan
+          notebook_task:
+            notebook_path: ./notebooks/05_publish_app_data.py
+            base_parameters:
+              lakebase_instance: ${resources.database_instances.lakebase.name}
 
   pipelines:
     # Lakeflow Declarative Pipeline: bronze -> one mapped cluster history (silver_* tables)
@@ -125,8 +140,28 @@ resources:
         - file:
             path: ./pipelines/gold_dashboard.sql
 
+  # Lakebase Postgres for the app: notebooks/05_publish_app_data.py writes schema "dengueradar"
+  database_instances:
+    lakebase:
+      name: dengueradar
+      capacity: CU_1
+
+  apps:
+    # The Monday screen with the real map (planning areas, Wolbachia zones, clusters, team sites)
+    dengueradar_app:
+      name: dengueradar
+      description: "DengueRadar: two-week dengue risk by planning area, new-cluster watch and team planner"
+      source_code_path: ./app
+      resources:
+        - name: lakebase
+          description: Lakebase Postgres holding the app's data
+          database:
+            instance_name: ${resources.database_instances.lakebase.name}
+            database_name: databricks_postgres
+            permission: CAN_CONNECT_AND_CREATE
+
   dashboards:
-    # The "Monday screen": risk by area, new-cluster watch, team plan, track record, test results.
+    # Analyst view: risk by area, new-cluster watch, team plan, track record, test results.
     # Built from scripts/build_dashboard.py.
     dengueradar:
       display_name: DengueRadar
