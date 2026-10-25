@@ -118,8 +118,8 @@
             "name": "cacfe07f",
             "multilineTextboxSpec": {
               "lines": [
-                "# DengueRadar · this week",
-                "Two-week dengue risk for Singapore's 55 planning areas, from the newest **locked** forecast (it can't be edited once written). Levels use NEA's alert rule: **High** = a cluster with 10+ cases, **Medium** = any active cluster, **Low** = none."
+                "# DengueRadar · this week\n\n",
+                "Two-week dengue risk for Singapore's 55 planning areas, from the newest **locked** forecast (it can't be edited once written). Levels use NEA's alert rule: **High** = a cluster with 10+ cases, **Medium** = any active cluster, **Low** = none.\n\n"
               ]
             }
           },
@@ -1051,8 +1051,8 @@
             "name": "67a656b4",
             "multilineTextboxSpec": {
               "lines": [
-                "## Team plan",
-                "One inspection site per team, no overlaps: an anchor HDB block plus every priority block within 300 m. Priority = near a cluster on the newest NEA list (×3), near a high-mosquito area (×2), or in an area the forecast flags (×1); halved inside Wolbachia zones."
+                "## Team plan\n\n",
+                "One inspection site per team, no overlaps: an anchor HDB block plus every priority block within 300 m. Priority = near a cluster on the newest NEA list (×3), near a high-mosquito area (×2), or in an area the forecast flags (×1); halved inside Wolbachia zones.\n\n"
               ]
             }
           },
@@ -1394,8 +1394,8 @@
             "name": "fa9aec10",
             "multilineTextboxSpec": {
               "lines": [
-                "# Track record & tests",
-                "Every forecast is locked in an append-only table before the outcome is known, then scored against NEA's first list 14–35 days later. The test below predicts every year from 2020 using only the years before it."
+                "# Track record & tests\n\n",
+                "Every forecast is locked in an append-only table before the outcome is known, then scored against NEA's first list 14–35 days later. The test below predicts every year from 2020 using only the years before it.\n\n"
               ]
             }
           },

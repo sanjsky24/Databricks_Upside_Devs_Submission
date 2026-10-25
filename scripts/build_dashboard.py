@@ -111,7 +111,9 @@ def frame(title, description=None):
 
 
 def text(name, lines, pos):
-    return {"widget": {"name": hid("w", name), "multilineTextboxSpec": {"lines": lines}}, "position": pos}
+    """Markdown; the lines are joined as-is, so each paragraph ends with a blank line."""
+    md = [line + "\n\n" for line in lines]
+    return {"widget": {"name": hid("w", name), "multilineTextboxSpec": {"lines": md}}, "position": pos}
 
 
 def counter(name, key, field, title, description, pos):

@@ -50,7 +50,8 @@ for name, d, comment in [
 ]:
     (spark.createDataFrame(d).write.mode("overwrite").option("overwriteSchema", "true")
      .saveAsTable(f"{catalog}.{schema}.{name}"))
-    spark.sql(f"COMMENT ON TABLE {catalog}.{schema}.{name} IS '{comment}'")
+    quoted = comment.replace("\\", "\\\\").replace("'", "\\'")
+    spark.sql(f"COMMENT ON TABLE {catalog}.{schema}.{name} IS '{quoted}'")
 
 display(sites)
 display(summary)
