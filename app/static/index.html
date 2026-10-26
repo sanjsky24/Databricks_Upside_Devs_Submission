@@ -16,86 +16,77 @@
   </header>
 
   <main>
-    <section class="hello">
-      <h1 id="hello">Good day</h1>
-      <p id="summary"></p>
-    </section>
-    <section class="kpis" id="kpis"></section>
+    <h1 class="hello" id="hello">Good day</h1>
 
-    <section class="workspace">
-      <aside class="card panel" aria-label="DengueRadar tools">
-        <nav class="tabs" role="tablist" aria-label="Sections">
-          <button role="tab" data-tab="overview">This week</button>
-          <button role="tab" data-tab="areas">Areas</button>
-          <button role="tab" data-tab="why">Why?</button>
-          <button role="tab" data-tab="clusters">Clusters today</button>
-          <button role="tab" data-tab="watch">New clusters</button>
-          <button role="tab" data-tab="alerts">Alerts</button>
-          <button role="tab" data-tab="teams">Teams</button>
-          <button role="tab" data-tab="runsheets">Run sheets</button>
-          <button role="tab" data-tab="ask">Ask</button>
-          <button role="tab" data-tab="record">Track record</button>
-        </nav>
-        <div class="tab-body" id="tab-overview"></div>
-        <div class="tab-body" id="tab-areas" hidden>
-          <p class="sub">Highest risk first. Reasons describe what the model was given for the area. Tap a row for details.</p>
-          <div class="table-wrap"><table class="risk" id="risk"></table></div>
-          <button class="more" id="risk-more" hidden></button>
-        </div>
-        <div class="tab-body" id="tab-why" hidden></div>
-        <div class="tab-body" id="tab-clusters" hidden></div>
-        <div class="tab-body" id="tab-watch" hidden></div>
-        <div class="tab-body" id="tab-alerts" hidden></div>
-        <div class="tab-body" id="tab-teams" hidden>
-          <label class="slider">Inspection teams this week <output id="teams-out">6</output>
-            <input type="range" id="teams" min="1" max="12" value="6">
-          </label>
-          <div id="plan-summary"></div>
-          <details class="assume" id="assume">
-            <summary>Assumptions behind the time estimates (editable)</summary>
-            <div class="assume-grid" id="assume-grid"></div>
-            <p class="note">These are planning estimates from the numbers above, not NEA figures. Floors come from HDB's
-              block data. Change any number and every time below updates.</p>
-          </details>
-          <ol class="sites" id="sites"></ol>
-          <p class="note">Each team gets one 300 m site, no overlaps, chosen to cover the most homes near this week's
-            clusters and high-mosquito spots, and in areas the forecast flags. Homes inside Wolbachia zones count half.</p>
-        </div>
-        <div class="tab-body" id="tab-runsheets" hidden>
-          <div class="rs-bar">
-            <label>Team <select id="rs-team"></select></label>
-            <span class="grow"></span>
-            <button type="button" id="rs-print">Print</button>
-            <button type="button" id="rs-csv">CSV (this team)</button>
-            <button type="button" id="rs-csv-all">CSV (all teams)</button>
+    <!-- Three columns of cards. Drag the gaps between cards (or focus one and use the arrow keys) to resize;
+         double-click a gap to reset it. Sizes are remembered in this browser. -->
+    <div class="board split" data-dir="row" id="board" data-sizes="24,50,26">
+      <div class="col split" data-dir="col" id="col-left" data-sizes="38,30,32">
+        <section class="card" id="c-overall" aria-labelledby="h-overall">
+          <header class="card-h"><h2 id="h-overall">Overall information</h2></header>
+          <div class="card-b" id="overall"></div>
+        </section>
+        <section class="card" id="c-clusters" aria-labelledby="h-clusters">
+          <header class="card-h"><h2 id="h-clusters">Clusters</h2>
+            <div class="seg" role="tablist" aria-label="Which clusters">
+              <button role="tab" id="cl-today" data-mode="today" aria-selected="true">Today</button>
+              <button role="tab" id="cl-new" data-mode="new" aria-selected="false">New</button>
+            </div>
+          </header>
+          <div class="card-b" id="clusters"></div>
+        </section>
+        <section class="card" id="c-teams" aria-labelledby="h-teams">
+          <header class="card-h"><h2 id="h-teams">Teams</h2><output id="teams-out" class="count">6</output></header>
+          <div class="card-b">
+            <input type="range" id="teams" min="1" max="12" value="6" aria-label="Inspection teams this week">
+            <div id="plan-summary"></div>
+            <details class="assume" id="assume">
+              <summary>Assumptions</summary>
+              <div class="assume-grid" id="assume-grid"></div>
+            </details>
+            <ol class="sites" id="sites"></ol>
           </div>
-          <div id="runsheet"></div>
-        </div>
-        <div class="tab-body" id="tab-ask" hidden></div>
-        <div class="tab-body" id="tab-record" hidden>
-          <h2>Can you trust it?</h2>
-          <p class="sub">Tested on every NEA list from 2020 to 2026, each year predicted only from the years before it.</p>
-          <div id="tests"></div>
-          <h2 id="retro-title" class="h2-gap">How the forecast from NEA's 14 Oct list is doing</h2>
-          <p class="sub" id="retro-sub"></p>
-          <div id="retro"></div>
-          <div id="track"></div>
-          <h2 class="h2-gap">Weekly dengue cases, Singapore</h2>
-          <p class="sub">MOH and CDA weekly bulletins, no missing weeks</p>
-          <div id="weekly" class="weekly"></div>
-        </div>
-      </aside>
-
-      <div class="card map-card">
-        <div class="layers" id="layers"></div>
-        <div id="map" role="img" aria-label="Map of Singapore's planning areas coloured by forecast risk level, over OpenStreetMap streets"></div>
-        <div class="legend" id="legend"></div>
+        </section>
       </div>
-    </section>
 
-    <footer>Map data © OpenStreetMap contributors. Dengue data: NEA (data.gov.sg, Internet Archive, sgcharts); Wolbachia &amp;
-      high-Aedes areas: NEA; HDB; URA; MOH/CDA bulletins. Served from Lakebase · alerts drafted with Llama 3.3 · questions
-      answered by Genie · The Upside Devs.</footer>
+      <div class="col split" data-dir="col" id="col-mid" data-sizes="60,40">
+        <section class="card map-card" id="c-map" aria-labelledby="h-map" data-min="260">
+          <header class="card-h"><h2 id="h-map">DengueRadar map</h2><div class="layers" id="layers"></div></header>
+          <div id="map" role="img" aria-label="Map of Singapore's planning areas coloured by forecast risk level"></div>
+          <div class="legend" id="legend"></div>
+        </section>
+        <div class="row split" data-dir="row" id="row-bottom" data-sizes="26,74">
+          <section class="card alert-card" id="c-alert" aria-label="Draft an alert" data-min="150"></section>
+          <section class="card" id="c-record" aria-labelledby="h-record">
+            <header class="card-h"><h2 id="h-record">Track record</h2><div class="locks" id="locks"></div></header>
+            <div class="card-b" id="record"></div>
+          </section>
+        </div>
+      </div>
+
+      <div class="col split" data-dir="col" id="col-right" data-sizes="36,32,32">
+        <section class="card" id="c-areas" aria-labelledby="h-areas">
+          <header class="card-h">
+            <button class="back" id="areas-back" hidden aria-label="Back to all areas">
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+            <h2 id="h-areas">Areas</h2>
+          </header>
+          <div class="card-b">
+            <table class="risk" id="risk"></table>
+            <div id="area-detail" hidden></div>
+          </div>
+        </section>
+        <section class="card ask-card" id="c-ask" aria-label="Ask DengueRadar"><div id="ask-host"></div></section>
+        <section class="card" id="c-weekly" aria-labelledby="h-weekly">
+          <header class="card-h"><h2 id="h-weekly">Weekly dengue cases, Singapore</h2></header>
+          <div class="card-b weekly" id="weekly"></div>
+        </section>
+      </div>
+    </div>
+
+    <footer>Dengue data: NEA (data.gov.sg, Internet Archive, sgcharts); Wolbachia &amp; high-Aedes areas: NEA; HDB; URA;
+      MOH/CDA bulletins; street locations © OpenStreetMap contributors. Served from Lakebase · alerts drafted with
+      Llama 3.3 · questions answered by Genie · The Upside Devs.</footer>
   </main>
 
   <dialog id="welcome" aria-labelledby="welcome-title">
@@ -116,7 +107,7 @@
         <h2 id="draft-title">Draft alert</h2>
         <button value="cancel" class="x" aria-label="Close">×</button>
       </div>
-      <p class="sub" id="draft-scope"></p>
+      <p class="scope" id="draft-scope"></p>
       <div class="draft-opts">
         <label>Audience <select id="d-audience">
           <option value="residents">Residents of these blocks</option>
@@ -136,7 +127,7 @@
         </select></label>
       </div>
       <button type="button" class="primary" id="d-go">Draft with AI</button>
-      <p class="sub" id="d-status" role="status"></p>
+      <p class="scope" id="d-status" role="status"></p>
       <textarea id="d-text" rows="10" placeholder="The draft appears here. You can edit it before saving or sending."></textarea>
       <p class="warn" id="d-warn" hidden></p>
       <div class="draft-actions">

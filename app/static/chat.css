@@ -65,6 +65,7 @@
   .ask-fab { right: 16px; bottom: 16px; }
 }
 
-/* inline: the chat fills the "Ask" tab of the left panel */
-.ask-panel.inline { position: static; width: auto; height: 100%; min-height: 420px; box-shadow: none; border-radius: 10px; }
-@media (max-width: 600px) { .ask-panel.inline { height: 70vh; border: 1px solid var(--line); border-radius: 10px; } }
+/* inline: the chat fills the "Ask DengueRadar" card */
+.ask-panel.inline { position: static; width: auto; flex: 1; height: auto; min-height: 0; box-shadow: none; border: none; border-radius: 0; }
+.ask-panel.inline .ask-head { padding: 8px 8px 8px 12px; }
+.ask-panel.inline .ask-head span { display: none; }

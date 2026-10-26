@@ -1,7 +1,7 @@
 // "Ask DengueRadar": a chat box answered by the DengueRadar Genie space through /api/ask (genie_chat.py).
 // Genie writes SQL over the same gold tables as the rest of this screen; each answer can show its table
 // and the SQL it ran, so officers can check where a number came from.
-// If the page has a #tab-ask element the chat fills that tab; otherwise it is a floating button + panel.
+// If the page has an #ask-host element the chat fills it (the Ask card); otherwise it is a floating button + panel.
 (() => {
   const SAMPLES = [
     "Which areas are forecast High risk in the next two weeks?",
@@ -18,7 +18,7 @@
   let conversation = null;
   let busy = false;
 
-  const host = document.getElementById("tab-ask");
+  const host = document.getElementById("ask-host");
   const panelHtml = `
     <section class="ask-panel${host ? " inline" : ""}" id="ask-panel" ${host ? 'aria-label="Ask DengueRadar"' : 'role="dialog" aria-label="Ask DengueRadar" hidden'}>
       <header class="ask-head">
