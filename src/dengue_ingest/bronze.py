@@ -132,8 +132,11 @@ def _sql_str(s):
 
 
 def create_latest_view(spark, table):
+    # ALTER VIEW keeps the view's grants (e.g. the app's SELECT for Genie); CREATE OR REPLACE drops them.
+    # Re-defining it on every run still picks up columns added by schema evolution (SELECT * is expanded).
+    verb = "ALTER" if spark.catalog.tableExists(f"{table}_latest") else "CREATE"
     spark.sql(f"""
-        CREATE OR REPLACE VIEW {table}_latest AS
+        {verb} VIEW {table}_latest AS
         SELECT * FROM {table}
         QUALIFY _version = max(_version) OVER (
           PARTITION BY coalesce(_dataset_id, regexp_extract(_source_file, '/([^/]+)/v=', 1)))
