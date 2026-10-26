@@ -20,6 +20,7 @@
   --ok: #0a7f0a;
   --chip-high-ink: #ffffff;
   --chip-med-ink: #0b0b0b;
+  --low-chip: #1f7a47;
   --gap: 12px;
   color-scheme: light;
 }
@@ -59,15 +60,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 
 main { padding: 12px 16px 20px; display: grid; gap: 12px; }
 main > * { min-width: 0; }
-.hello { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hello-sum { font-size: 16px; font-weight: 400; margin-left: 4px; }
+.hello h1, .hello-sum { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hello-sum { font-size: 16px; margin: 2px 0 0; }
 
 /* ------------------------------------------------------------------ board: resizable columns of cards */
 .split { display: flex; min-width: 0; min-height: 0; }
 .split[data-dir="row"] { flex-direction: row; }
 .split[data-dir="col"] { flex-direction: column; }
 .split > :not(.gutter) { flex: 1 1 0; min-width: 0; min-height: 0; }
-.board { height: max(760px, calc(100vh - 92px)); }
+.board { height: max(760px, calc(100vh - 116px)); }
 .gutter { flex: 0 0 var(--gap); position: relative; touch-action: none; }
 .gutter::after { content: ""; position: absolute; border-radius: 2px; background: transparent; transition: background-color .15s; }
 .split[data-dir="row"] > .gutter { cursor: col-resize; }
@@ -106,7 +107,7 @@ body.resizing #map { pointer-events: none; }
   #c-weekly { height: 280px; }
   #c-alert { min-height: 120px; }
   .user-chip { margin-left: 0; }
-  .hello { white-space: normal; }
+  .hello h1, .hello-sum { white-space: normal; }
 }
 
 /* ------------------------------------------------------------------ map */
@@ -132,7 +133,7 @@ body.resizing #map { pointer-events: none; }
 .chip { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
 .chip.High { background: var(--high); color: var(--chip-high-ink); }
 .chip.Medium { background: var(--medium); color: var(--chip-med-ink); }
-.chip.Low { background: var(--low); color: var(--ink2); }
+.chip.Low { background: var(--low-chip); color: #ffffff; }
 button.primary { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 8px 14px; font: inherit; font-weight: 700; cursor: pointer; }
 button.primary:disabled { opacity: .6; cursor: wait; }
 button.small { padding: 4px 10px; font-size: 13px; }
@@ -241,7 +242,7 @@ table.risk { width: 100%; border-collapse: collapse; font-size: 13px; }
   border-top: 1px solid var(--line); cursor: pointer; border-radius: 6px; }
 .pick li:first-child { border-top: none; }
 .pick .nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pick .lv { width: 10px; height: 10px; border-radius: 3px; background: var(--low); }
+.pick .lv { width: 10px; height: 10px; border-radius: 3px; background: var(--low-chip); }
 .pick .lv.High { background: var(--high); }
 .pick .lv.Medium { background: var(--medium); }
 .pick .s { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--high); }
@@ -299,10 +300,12 @@ table.risk { width: 100%; border-collapse: collapse; font-size: 13px; }
 .expand:hover { color: var(--ink); background: var(--bg); }
 .ask-head [data-expand] { display: grid; place-items: center; }
 .ask-head [data-expand] svg.i { width: 17px; height: 17px; }
-#popup { width: min(1100px, calc(100vw - 32px)); height: min(860px, calc(100vh - 48px)); max-height: none; overflow: hidden; }
-#popup[open] { display: flex; }
-#popup > .card { flex: 1 1 auto; border: none; border-radius: 0; }
+#popup { width: min(1100px, calc(100vw - 32px)); height: fit-content; max-height: min(860px, calc(100vh - 48px)); overflow: hidden; }
+#popup[open] { display: flex; flex-direction: column; }
+#popup.tall { height: min(860px, calc(100vh - 48px)); }
+#popup > .card { flex: 1 1 auto; min-height: 0; border: none; border-radius: 0; }
 #popup .ask-panel.inline .ask-msg { font-size: 14px; }
+#popup .cl-list .nm { white-space: normal; }
 .card.holder { background: transparent; border: 1px dashed var(--line); }
 
 /* ------------------------------------------------------------------ route on street tiles */

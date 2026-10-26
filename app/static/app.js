@@ -737,6 +737,7 @@ function setupPopup() {
       holder.style.order = getComputedStyle(c).order;
       c.replaceWith(holder);
       dlg.append(c);
+      dlg.classList.toggle("tall", c.id === "c-ask");  // the chat needs room to grow; other cards fit their content
       icon(c, true);
       dlg.showModal();
     });
