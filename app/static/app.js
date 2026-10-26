@@ -21,11 +21,14 @@ const ICON = {
   lock: svg('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'),
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
   arrow: svg('<path d="M5 12h14M13 6l6 6-6 6"/>'),
+  expand: svg('<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>'),
+  shrink: svg('<path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/>'),
   check: svg('<path d="M5 12l5 5 9-10"/>'),
   cross: svg('<path d="M6 6l12 12M18 6L6 18"/>'),
 };
 
-let D, map, areaLayer, labelLayer, teamLayer, routeLayer, blockLayer, currentPlan = [];
+let D, map, areaLayer, labelLayer, teamLayer, routeLayer, blockLayer, streets, routeCtl, fitAll, currentPlan = [];
+let routeMode = false;  // a team's route is shown on OpenStreetMap streets
 let mapTouched = false;  // once the officer (or a button) moves the map, stop refitting it to Singapore
 let ALERTS = [];
 let ME = { name: "", account: "" };
@@ -70,7 +73,6 @@ function init() {
     (a.new_cluster_rank ?? 99) - (b.new_cluster_rank ?? 99));
   prepBlocks();
   drawMap();
-  setupAssumptions();
   areasTable();
   clustersCard();
   record();
@@ -82,6 +84,7 @@ function init() {
   document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => { clMode = b.dataset.mode; clustersCard(); }));
   $("areas-back").addEventListener("click", closeArea);
   setupDraftDialog();
+  setupPopup();
   window.addEventListener("hashchange", route);
   render();
   route();
@@ -130,8 +133,8 @@ function greet() {
   const hour = +new Intl.DateTimeFormat("en-SG", { hour: "numeric", hourCycle: "h23", timeZone: "Asia/Singapore" }).format(new Date());
   const part = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const high = D.areas.filter((a) => a.predicted_level === "High").map((a) => a.area);
-  $("hello").textContent = `${part}${ME.name ? `, ${ME.name}` : ""}. ` +
-    (high.length ? `${list(high)} ${high.length === 1 ? "is" : "are"} forecast High.` : "No area is forecast High.");
+  $("hello").textContent = `${part}${ME.name ? `, ${ME.name}` : ""}.`;
+  $("hello-sum").textContent = high.length ? `${list(high)} ${high.length === 1 ? "is" : "are"} forecast High.` : "No area is forecast High.";
 }
 
 // ------------------------------------------------------------------ overall information
@@ -164,13 +167,15 @@ function areaStyle(a) {
   const fill = { High: css("--high"), Medium: css("--medium"), Low: css("--low") }[a.predicted_level];
   const watch = yes(a.new_cluster_watch) && a.level_today === 0;
   return {
-    fillColor: fill, fillOpacity: a.predicted_level === "Low" ? 1 : 0.88,
+    fillColor: fill, fillOpacity: routeMode ? (a.predicted_level === "Low" ? 0 : 0.12) : a.predicted_level === "Low" ? 1 : 0.88,
     color: watch ? css("--accent") : css("--land-line"), weight: watch ? 2.2 : 1, dashArray: watch ? "5 4" : null,
   };
 }
 
 function drawMap() {
-  map = L.map("map", { zoomSnap: 0.25, attributionControl: false, scrollWheelZoom: false });
+  map = L.map("map", { zoomSnap: 0.25, scrollWheelZoom: false });
+  map.attributionControl.setPrefix(false);
+  map.attributionControl.addAttribution("Dengue data: NEA");  // OpenStreetMap is credited here too while its streets show
   areaLayer = L.geoJSON({ type: "FeatureCollection", features: D.areas.filter((a) => a.geometry).map((a) => ({ type: "Feature", geometry: a.geometry, properties: a })) }, {
     style: (f) => areaStyle(f.properties),
     onEachFeature: (f, layer) => {
@@ -185,7 +190,8 @@ function drawMap() {
   // fit to the main island; the outlying islands would leave the map mostly sea
   const mainland = L.latLngBounds([]);
   areaLayer.eachLayer((l) => { if (!/ISLANDS$/.test(l.feature.properties.planning_area)) mainland.extend(l.getBounds()); });
-  const fit = () => { map.invalidateSize(); if (!mapTouched) map.fitBounds(mainland, { padding: [6, 6] }); };
+  fitAll = () => map.fitBounds(mainland, { padding: [6, 6] });
+  const fit = () => { map.invalidateSize(); if (!mapTouched) fitAll(); };
   fit();
   new ResizeObserver(fit).observe($("map"));  // cards are resizable
   ["mousedown", "touchstart", "wheel", "keydown"].forEach((ev) =>
@@ -244,7 +250,7 @@ function drawMap() {
     $(`lay-${k}`).addEventListener("change", (e) => {
       const l = layerOf(k);
       if (l) (e.target.checked ? l.addTo(map) : l.remove());
-      if (k === "teams" && !e.target.checked && routeLayer) routeLayer.remove();
+      if (k === "teams" && !e.target.checked) exitRoute();
     });
   });
 
@@ -332,7 +338,7 @@ function clustersCard() {
       <span class="dot" style="background:${(c.total || 0) >= 10 ? "var(--high)" : "var(--medium)"}"></span>
       <span class="nm">${esc(c.locality)}</span><span class="n">${c.total} cases</span></li>`).join("")}</ul>`;
     box.querySelectorAll("li").forEach((li) => {
-      const go = () => { const c = cs[+li.dataset.i]; mapTouched = true; map.setView([c.lat, c.lon], 16); };
+      const go = () => { const c = cs[+li.dataset.i]; closePopup(); mapTouched = true; map.setView([c.lat, c.lon], 16); };
       li.addEventListener("click", go);
       li.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
     });
@@ -386,38 +392,21 @@ function plan(teams) {
   return sites;
 }
 
-// --- time estimates: every input is shown and editable; this is an estimate, not NEA data
-const ASSUME_FIELDS = [
-  ["start", "Start time", "time", "09:00"],
-  ["shiftHours", "Shift length (hours)", "number", 8],
-  ["breakMin", "Breaks per shift (minutes)", "number", 60],
-  ["officers", "Officers per team", "number", 3],
-  ["travelMin", "Travel to the site (minutes)", "number", 30],
-  ["walkKmh", "Walking speed (km/h)", "number", 4],
-  ["routeFactor", "Street detour factor (× straight line)", "number", 1.3],
-  ["minPerBlock", "Common areas per block (minutes)", "number", 8],
-  ["minPerFloor", "Per floor, corridor check (minutes)", "number", 1],
-  ["homeShare", "Homes visited (% of homes)", "number", 10],
-  ["minPerHome", "Per home visit (minutes)", "number", 4],
-  ["floorsIfUnknown", "Floors if HDB data has none", "number", 12],
-];
-const A = {};
-function setupAssumptions() {
-  let saved = {};
-  try { saved = JSON.parse(store.get("dengueradar.assumptions") || "{}"); } catch { saved = {}; }
-  ASSUME_FIELDS.forEach(([k, , , v]) => { A[k] = saved[k] ?? v; });
-  $("assume-grid").innerHTML = ASSUME_FIELDS.map(([k, l, t]) => `<label>${esc(l)}<input type="${t}" id="as-${k}" value="${esc(A[k])}"
-    ${t === "number" ? 'min="0" step="any"' : ""}></label>`).join("") + `<button type="button" class="link" id="as-reset">Reset to defaults</button>`;
-  ASSUME_FIELDS.forEach(([k, , t]) => $(`as-${k}`).addEventListener("input", (e) => {
-    const v = t === "number" ? parseFloat(e.target.value) : e.target.value;
-    if (t === "number" && !(v >= 0)) return;
-    A[k] = v; store.set("dengueradar.assumptions", JSON.stringify(A)); replan();
-  }));
-  $("as-reset").addEventListener("click", () => {
-    ASSUME_FIELDS.forEach(([k, , , v]) => { A[k] = v; $(`as-${k}`).value = v; });
-    store.set("dengueradar.assumptions", JSON.stringify(A)); replan();
-  });
-}
+// --- time estimates: planning assumptions, not NEA data
+const A = {
+  start: "09:00",       // start time
+  shiftHours: 8,        // shift length (hours)
+  breakMin: 60,         // breaks per shift (minutes)
+  officers: 3,          // officers per team
+  travelMin: 30,        // travel to the site (minutes)
+  walkKmh: 4,           // walking speed (km/h)
+  routeFactor: 1.3,     // street detour (× straight line)
+  minPerBlock: 8,       // common areas per block (minutes)
+  minPerFloor: 1,       // per floor, corridor check (minutes)
+  homeShare: 10,        // homes visited (% of homes)
+  minPerHome: 4,        // per home visit (minutes)
+  floorsIfUnknown: 12,  // floors when HDB's data has none
+};
 
 const hhmm = (mins) => { const m = Math.round(mins); return `${String(Math.floor(m / 60) % 24).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`; };
 
@@ -481,7 +470,7 @@ function replan() {
   }).join("");
   const wasOn = teamLayer && map.hasLayer(teamLayer);
   if (teamLayer) teamLayer.remove();
-  if (routeLayer) routeLayer.remove();
+  exitRoute(true);
   teamLayer = L.layerGroup(currentPlan.flatMap((s, i) => [
     L.circle([s.lat, s.lon], { radius: RADIUS, color: css("--team"), weight: 2, dashArray: "4 3", fillColor: css("--team"), fillOpacity: 0.08, interactive: false }),
     L.marker([s.lat, s.lon], { icon: L.divIcon({ className: "team-pin", html: String(i + 1), iconSize: [24, 24], iconAnchor: [12, 12] }) })
@@ -492,23 +481,59 @@ function replan() {
   $("sites").querySelectorAll("li").forEach((li) => li.addEventListener("click", (e) => {
     const s = currentPlan[+li.dataset.i];
     if (e.target.dataset.act === "draft") { openDraft(s.planning_area, s); return; }
+    closePopup();
     showTeams();
-    drawRoute(+li.dataset.i, true);
+    drawRoute(+li.dataset.i);
   }));
 }
 
-function drawRoute(i, zoom) {
+// A team's route: the map switches to OpenStreetMap streets so officers can see which blocks are meant;
+// each stop is numbered in walking order and labelled with its block number.
+function drawRoute(i) {
   const s = currentPlan[i];
   if (!s) return;
   if (routeLayer) routeLayer.remove();
+  if (!streets) {
+    streets = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' });
+    const Exit = L.Control.extend({ onAdd() {
+      const b = L.DomUtil.create("button", "route-exit");
+      b.type = "button";
+      L.DomEvent.disableClickPropagation(b);
+      b.addEventListener("click", () => exitRoute());
+      return b;
+    } });
+    routeCtl = new Exit({ position: "topright" });
+  }
+  if (!routeMode) {
+    routeMode = true;
+    streets.addTo(map).bringToBack();
+    routeCtl.addTo(map);
+    $("c-map").classList.add("streets");
+    highlight(selected);
+  }
+  routeCtl.getContainer().innerHTML = `${ICON.cross}Team ${i + 1} · back to risk map`;
   const pts = s.est.order.map((j) => [B[j].lat, B[j].lon]);
   routeLayer = L.layerGroup([
     L.polyline(pts, { color: css("--team"), weight: 3, opacity: 0.85 }),
-    ...s.est.stops.map((st) => L.marker([st.b.lat, st.b.lon], { icon: L.divIcon({ className: "stop-pin", html: String(st.n), iconSize: [18, 18], iconAnchor: [9, 9] }) })
+    ...s.est.stops.map((st) => L.marker([st.b.lat, st.b.lon], { icon: L.divIcon({ className: "stop-pin", html: String(st.n), iconSize: [20, 20], iconAnchor: [10, 10] }) })
+      .bindTooltip(`Blk ${esc(st.b.blk_no)}`, { permanent: true, direction: "right", offset: [9, 0], className: "blk-tag" })
       .on("mousemove", (e) => showTip(e.originalEvent, `<b>${st.n}. Blk ${esc(st.b.blk_no)} ${esc(title(st.b.street))}</b><br>Shift ${st.day}, about ${st.time} · ${st.floors} floors · ${st.b.h} homes`))
       .on("mouseout", hideTip)),
   ]).addTo(map);
-  if (zoom) { mapTouched = true; map.fitBounds(L.latLngBounds(pts).pad(0.15)); }
+  mapTouched = true;
+  map.fitBounds(L.latLngBounds(pts).pad(0.15), { maxZoom: 18 });
+}
+
+function exitRoute(keepView) {
+  if (routeLayer) { routeLayer.remove(); routeLayer = null; }
+  if (!routeMode) return;
+  routeMode = false;
+  streets.remove();
+  routeCtl.remove();
+  $("c-map").classList.remove("streets");
+  highlight(selected);
+  if (!keepView) { mapTouched = false; fitAll(); }
 }
 
 // ------------------------------------------------------------------ alerts
@@ -627,27 +652,8 @@ function ring(num, den, label, base) {
     <text x="32" y="36.5" text-anchor="middle">${den ? `${num}/${den}` : "–"}</text></svg>${esc(label)}</div>`;
 }
 
-function hbars(rows) {
-  // rows: [label, value 0-1, shown text, is DengueRadar]
-  return `<div class="hbars">${rows.map(([l, v, t, me]) => `<span>${esc(l)}</span>
-    <span class="t"><i class="${me ? "me" : ""}" style="width:${Math.max(2, 100 * v)}%"></i></span><span class="n">${esc(t)}</span>`).join("")}</div>`;
-}
-
 function record() {
-  const h = D.test_headline || [];
-  const nc = h.find((r) => r.baseline_name === "Past clusters here");
-  const chance = h.find((r) => r.baseline_name.startsWith("Chance"));
-  const hi = h.find((r) => r.question.startsWith("High"));
-  const tests = nc && hi ? `<div>
-      <h3>New clusters caught, 2020–26</h3>
-      ${hbars([["DengueRadar", nc.model, pct(nc.model), true], ["Past clusters", nc.baseline, pct(nc.baseline)],
-        ...(chance ? [["Random", chance.baseline, pct(chance.baseline)]] : [])])}
-      <h3>High-risk areas, score</h3>
-      ${hbars([["DengueRadar", hi.model, (+hi.model).toFixed(2), true], ["Same as now", hi.baseline, (+hi.baseline).toFixed(2)]])}
-    </div>` : "";
-
   const r = D.retro_check || [];
-  let retro = "";
   if (r.length) {
     const f = r[0], n = r.length, count = (k) => r.filter((x) => yes(x[k])).length;
     const calledHigh = r.filter((x) => x.predicted_level === "High");
@@ -655,20 +661,19 @@ function record() {
     const shown = r.filter((x) => x.level_then !== "Low" || x.predicted_level !== "Low" || x.level_now !== "Low" || (x.new_cluster_rank && x.new_cluster_rank <= 5))
       .sort((a, b) => LEVEL_NUM[b.predicted_level] - LEVEL_NUM[a.predicted_level] || LEVEL_NUM[b.level_now] - LEVEL_NUM[a.level_now] ||
         (a.new_cluster_rank ?? 99) - (b.new_cluster_rank ?? 99)).slice(0, 4);
-    retro = `<div>
-        <h3>${esc(day(f.basis_date))} forecast vs ${esc(day(f.compare_date))}</h3>
-        <div class="rings">
-          ${ring(count("model_right"), n, "areas right", false)}
-          ${ring(count("same_as_now_right"), n, "same as now", true)}
-          ${ring(calledHigh.filter((x) => x.level_now === "High").length, calledHigh.length, "High calls held", false)}
-          ${ring(newOnes.filter((x) => x.new_cluster_rank && x.new_cluster_rank <= 5).length, newOnes.length, "new in top 5", false)}
-        </div>
-        <table class="mini"><thead><tr><th>Area</th><th>Forecast</th><th>${esc(day(f.compare_date))}</th><th></th></tr></thead>
-        <tbody>${shown.map((x) => `<tr><td><b>${esc(x.area)}</b></td><td>${chip(x.predicted_level)}</td>
-          <td>${chip(x.level_now)}</td><td class="r ${yes(x.model_right) ? "ok" : "miss"}" aria-label="${yes(x.model_right) ? "Right" : "Wrong"}">${yes(x.model_right) ? ICON.check : ICON.cross}</td></tr>`).join("")}</tbody></table>
-      </div>`;
+    $("h-record").textContent = `${day(f.basis_date)} forecast vs ${day(f.compare_date)}`;
+    $("record").innerHTML = `<div class="rec">
+      <div class="rings">
+        ${ring(count("model_right"), n, "areas right", false)}
+        ${ring(count("same_as_now_right"), n, "same as now", true)}
+        ${ring(calledHigh.filter((x) => x.level_now === "High").length, calledHigh.length, "High calls held", false)}
+        ${ring(newOnes.filter((x) => x.new_cluster_rank && x.new_cluster_rank <= 5).length, newOnes.length, "new in top 5", false)}
+      </div>
+      <table class="mini"><thead><tr><th>Area</th><th>Forecast</th><th>${esc(day(f.compare_date))}</th><th></th></tr></thead>
+      <tbody>${shown.map((x) => `<tr><td><b>${esc(x.area)}</b></td><td>${chip(x.predicted_level)}</td>
+        <td>${chip(x.level_now)}</td><td class="r ${yes(x.model_right) ? "ok" : "miss"}" aria-label="${yes(x.model_right) ? "Right" : "Wrong"}">${yes(x.model_right) ? ICON.check : ICON.cross}</td></tr>`).join("")}</tbody></table>
+    </div>`;
   }
-  $("record").innerHTML = `<div class="rec">${tests}${retro}</div>`;
 
   // locked forecasts (append-only): when each was made from, and when it can be scored
   const locks = [...(D.track_record || [])].sort((a, b) => (a.basis_date < b.basis_date ? -1 : 1));
@@ -703,6 +708,45 @@ function weekly() {
     showTip(e, `Week ending ${p.d.toLocaleDateString("en-SG", { day: "numeric", month: "short", year: "numeric" })}<br><b>${p.v} cases</b>`);
   });
   $("wk-hit").addEventListener("mouseleave", () => { hv.setAttribute("visibility", "hidden"); hideTip(); });
+}
+
+// ------------------------------------------------------------------ enlarge a card into a pop-up
+// The card itself moves into the dialog and back, so whatever it holds (a chat, an open area) stays as it was.
+const closePopup = () => { if ($("popup").open) $("popup").close(); };
+function setupPopup() {
+  const dlg = $("popup");
+  let card = null, holder = null;
+  const icon = (c, big) => {
+    const b = c.querySelector("[data-expand]");
+    b.innerHTML = big ? ICON.shrink : ICON.expand;
+    b.setAttribute("aria-label", big ? "Back to the board" : "Enlarge");
+    b.title = big ? "Back to the board" : "Enlarge";
+  };
+  // the Ask card's header is built by chat.js
+  const askHead = document.querySelector("#c-ask .ask-head");
+  if (askHead) askHead.insertAdjacentHTML("beforeend", '<button class="ask-icon" data-expand></button>');
+  document.querySelectorAll("[data-expand]").forEach((b) => {
+    icon(b.closest(".card"), false);
+    b.addEventListener("click", () => {
+      const c = b.closest(".card");
+      if (card === c) { dlg.close(); return; }
+      card = c;
+      holder = document.createElement("div");
+      holder.className = "card holder";
+      holder.style.flexGrow = c.style.flexGrow;
+      holder.style.order = getComputedStyle(c).order;
+      c.replaceWith(holder);
+      dlg.append(c);
+      icon(c, true);
+      dlg.showModal();
+    });
+  });
+  dlg.addEventListener("close", () => {
+    if (!card) return;
+    holder.replaceWith(card);
+    icon(card, false);
+    card = null;
+  });
 }
 
 // ------------------------------------------------------------------ resizable cards

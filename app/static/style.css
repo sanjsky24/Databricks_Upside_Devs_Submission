@@ -60,14 +60,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 main { padding: 12px 16px 20px; display: grid; gap: 12px; }
 main > * { min-width: 0; }
 .hello { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-footer { color: var(--ink2); font-size: 12px; text-align: center; }
+.hello-sum { font-size: 16px; font-weight: 400; margin-left: 4px; }
 
 /* ------------------------------------------------------------------ board: resizable columns of cards */
 .split { display: flex; min-width: 0; min-height: 0; }
 .split[data-dir="row"] { flex-direction: row; }
 .split[data-dir="col"] { flex-direction: column; }
 .split > :not(.gutter) { flex: 1 1 0; min-width: 0; min-height: 0; }
-.board { height: max(760px, calc(100vh - 116px)); }
+.board { height: max(760px, calc(100vh - 92px)); }
 .gutter { flex: 0 0 var(--gap); position: relative; touch-action: none; }
 .gutter::after { content: ""; position: absolute; border-radius: 2px; background: transparent; transition: background-color .15s; }
 .split[data-dir="row"] > .gutter { cursor: col-resize; }
@@ -253,11 +253,6 @@ table.risk { width: 100%; border-collapse: collapse; font-size: 13px; }
 #plan-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 8px; }
 #plan-summary div { background: var(--bg); border-radius: 10px; padding: 8px 10px; font-size: 12px; line-height: 1.25; }
 #plan-summary b { display: block; font-size: 18px; color: var(--ink); font-variant-numeric: tabular-nums; }
-.assume { margin: 4px 0 8px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
-.assume summary { cursor: pointer; font-weight: 600; font-size: 13px; }
-.assume-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px 10px; margin: 10px 0 4px; }
-.assume-grid label { display: grid; gap: 3px; font-size: 12px; color: var(--ink2); }
-.assume-grid input { background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; font: inherit; font-size: 13px; }
 .sites { padding: 0; margin: 0; list-style: none; counter-reset: s; }
 .sites li { padding: 9px 0 9px 34px; border-top: 1px solid var(--line); position: relative; cursor: pointer; }
 .sites li::before { counter-increment: s; content: counter(s); position: absolute; left: 0; top: 9px; width: 24px; height: 24px;
@@ -276,24 +271,18 @@ table.risk { width: 100%; border-collapse: collapse; font-size: 13px; }
   padding: 2px 10px 2px 7px; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .lock svg.i { width: 14px; height: 14px; }
 .lock.scored { border-color: var(--ok); }
-.rec { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px 20px; align-items: start; }
+.rec { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 20px; align-items: center; }
 .rec > div { min-width: 0; }
-.hbars { display: grid; grid-template-columns: auto minmax(40px, 1fr) 40px; gap: 6px 8px; align-items: center; font-size: 12px; }
-.hbars .t { height: 12px; background: var(--line); border-radius: 999px; overflow: hidden; }
-.hbars .t i { display: block; height: 100%; border-radius: 999px; background: var(--muted); }
-.hbars .t i.me { background: var(--accent); }
-.hbars .n { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
-.hbars + h3 { margin-top: 14px; }
-.rings { display: flex; flex-wrap: wrap; gap: 6px 4px; }
-.ring { display: grid; justify-items: center; gap: 2px; font-size: 11px; text-align: center; line-height: 1.2; width: 54px; }
-.ring svg { width: 50px; height: 50px; }
+.rings { display: grid; grid-template-columns: repeat(2, auto); justify-content: center; gap: 10px 24px; }
+.ring { display: grid; justify-items: center; gap: 2px; font-size: 11px; text-align: center; line-height: 1.2; width: 72px; }
+.ring svg { width: 56px; height: 56px; }
 .ring .trk { stroke: var(--line); }
 .ring .val { stroke: var(--accent); }
 .ring .val.base { stroke: var(--muted); }
 .ring text { fill: var(--ink); font-size: 13px; font-weight: 800; font-family: inherit; }
-.mini { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+.mini { width: 100%; border-collapse: collapse; font-size: 13px; }
 .mini th { text-align: left; color: var(--ink2); font-weight: 600; font-size: 12px; padding: 3px 4px; white-space: nowrap; }
-.mini td { padding: 3px 4px; border-top: 1px solid var(--line); white-space: nowrap; }
+.mini td { padding: 6px 4px; border-top: 1px solid var(--line); white-space: nowrap; }
 .mini .chip { font-size: 11px; padding: 0 7px; }
 .mini td.r { text-align: center; }
 .mini svg.i { width: 16px; height: 16px; stroke-width: 3; }
@@ -304,6 +293,29 @@ table.risk { width: 100%; border-collapse: collapse; font-size: 13px; }
 .weekly .ln { fill: none; stroke: var(--accent); stroke-width: 2; }
 .weekly text { fill: var(--ink2); font-size: 11px; }
 .weekly .hv { stroke: var(--ink2); stroke-width: 1; }
+
+/* ------------------------------------------------------------------ enlarge (pop-up) */
+.expand { background: none; border: none; color: var(--ink2); padding: 4px; border-radius: 6px; cursor: pointer; display: grid; place-items: center; }
+.expand:hover { color: var(--ink); background: var(--bg); }
+.ask-head [data-expand] { display: grid; place-items: center; }
+.ask-head [data-expand] svg.i { width: 17px; height: 17px; }
+#popup { width: min(1100px, calc(100vw - 32px)); height: min(860px, calc(100vh - 48px)); max-height: none; overflow: hidden; }
+#popup[open] { display: flex; }
+#popup > .card { flex: 1 1 auto; border: none; border-radius: 0; }
+#popup .ask-panel.inline .ask-msg { font-size: 14px; }
+.card.holder { background: transparent; border: 1px dashed var(--line); }
+
+/* ------------------------------------------------------------------ route on street tiles */
+.route-exit { display: inline-flex; align-items: center; gap: 6px; background: var(--head); color: #fff; border: 2px solid var(--accent);
+  border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+.route-exit svg.i { width: 14px; height: 14px; }
+.route-exit:hover { background: var(--accent); }
+.leaflet-tooltip.blk-tag { background: #ffffff; color: #13232f; border: 1px solid var(--team); border-radius: 4px; padding: 0 4px;
+  font-size: 11px; font-weight: 700; box-shadow: none; }
+.leaflet-tooltip.blk-tag::before { display: none; }
+.leaflet-container .leaflet-control-attribution { background: var(--surface); color: var(--ink2); border-radius: 6px 0 0 0; }
+.leaflet-container .leaflet-control-attribution a { color: var(--accent); }
+.streets .area-label { color: #13232f; text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff; }
 
 /* ------------------------------------------------------------------ dialogs */
 dialog { border: 1px solid var(--line); border-radius: 12px; padding: 0; width: min(680px, calc(100vw - 32px));

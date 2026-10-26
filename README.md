@@ -176,13 +176,15 @@ which the prototype resolved by chance and the pipeline now resolves to the area
 
 The app in [`app/`](app/) is what officers use. Everyone signs in with their Databricks account (Databricks Apps does
 this; the app has no passwords of its own); on the team's shared account it asks "What should we call you?" and keeps
-the name in that browser. It greets the officer in Singapore time in one line that names this week's High areas. The
+the name in that browser. It greets the officer in Singapore time and names this week's High areas. The
 screen is one board of cards around the map (planning areas coloured by forecast, no street tiles; HDB blocks appear
 when zoomed in): Overall information, Clusters (today / where new ones may start), Teams, a "+ Draft an alert" card,
-Track record (charts only), Areas (tap one for its reasons), Ask DengueRadar, and weekly cases. Drag the gap between
-two cards to resize them (or focus it and use the arrow keys; double-click resets); sizes are kept in that browser.
-Teams shows time per team (travel, walking, inspection, breaks, finish time, shifts needed) from editable
-assumptions and an ordered walking route. Ask is the Genie chat
+Track record (the 14 Oct check as charts, beside its top four areas), Areas (tap one for its reasons), Ask
+DengueRadar, and weekly cases. Drag the gap between two cards to resize them (or focus it and use the arrow keys;
+double-click resets); sizes are kept in that browser. Clusters, Areas, Ask and Teams have an enlarge button that opens
+the card in a pop-up. Teams shows time per team (travel, walking, inspection, breaks, finish time, shifts needed) from
+fixed planning assumptions (`A` in `static/app.js`); "Show route" switches the map to OpenStreetMap streets with each
+stop numbered and labelled with its block. Ask is the Genie chat
 ([`app/genie_chat.py`](app/genie_chat.py)); run [`scripts/grant_app_genie.sh`](scripts/grant_app_genie.sh) once so the
 app may use the Genie space and read its tables. Alerts: a "Draft alert" button (residents / town council /
 grassroots; SMS, notice or email; English, 中文, Melayu, தமிழ்) drafts the message with Llama 3.3 on Databricks from that
