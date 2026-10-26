@@ -338,7 +338,7 @@ function clustersCard() {
       <span class="dot" style="background:${(c.total || 0) >= 10 ? "var(--high)" : "var(--medium)"}"></span>
       <span class="nm">${esc(c.locality)}</span><span class="n">${c.total} cases</span></li>`).join("")}</ul>`;
     box.querySelectorAll("li").forEach((li) => {
-      const go = () => { const c = cs[+li.dataset.i]; closePopup(); mapTouched = true; map.setView([c.lat, c.lon], 16); };
+      const go = () => { closePopup(); showCluster(cs[+li.dataset.i]); };
       li.addEventListener("click", go);
       li.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
     });
@@ -454,17 +454,11 @@ function replan() {
   const multi = currentPlan.filter((s) => s.est.shifts > 1).length;
   $("plan-summary").innerHTML = `<div><b>${homes.toLocaleString()}</b>homes</div><div><b>${blocks}</b>HDB blocks</div>
     <div><b>${multi}/${currentPlan.length}</b>need 2+ shifts</div>`;
-  const h = (m) => `${Math.floor(m / 60)} h ${String(Math.round(m % 60)).padStart(2, "0")} min`;
   $("sites").innerHTML = currentPlan.map((s, i) => {
     const e = s.est;
-    const parts = `Travel ${Math.round(e.travel)} min · walking ${Math.round(e.walk)} min · inspection ${h(e.insp)} · breaks ${Math.round(e.breaks)} min · ${h(e.total)} in all` +
-      (e.unknownFloors ? ` · floors assumed for ${e.unknownFloors} blocks` : "");
     return `<li data-i="${i}"><b>${esc(s.anchor)}</b>, ${esc(s.area)}
       <div class="m">${s.blocks.length} blocks · ${s.homes.toLocaleString()} homes · ${s.nearCluster} near a cluster</div>
       <div class="est">${e.shifts > 1 ? `<span class="warn-chip">Needs ${e.shifts} shifts</span> last shift ends ${e.finish}` : `Finishes about ${e.finish}`}</div>
-      <div class="breakdown" title="${esc(parts)}">
-        <span style="flex:${e.travel}" class="b-travel"></span><span style="flex:${e.walk}" class="b-walk"></span>
-        <span style="flex:${e.insp}" class="b-insp"></span><span style="flex:${e.breaks}" class="b-break"></span></div>
       <div class="site-actions"><button class="link" data-act="route">Show route</button>
         <button class="link" data-act="draft">Draft alert for these blocks</button></div></li>`;
   }).join("");
@@ -487,12 +481,10 @@ function replan() {
   }));
 }
 
-// A team's route: the map switches to OpenStreetMap streets so officers can see which blocks are meant;
-// each stop is numbered in walking order and labelled with its block number.
-function drawRoute(i) {
-  const s = currentPlan[i];
-  if (!s) return;
-  if (routeLayer) routeLayer.remove();
+// Street view: for a team's route or a cluster, the map switches to OpenStreetMap streets so officers can
+// see which blocks are meant; blocks are labelled with their numbers.
+function streetsOn(label) {
+  if (routeLayer) { routeLayer.remove(); routeLayer = null; }
   if (!streets) {
     streets = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' });
@@ -512,7 +504,14 @@ function drawRoute(i) {
     $("c-map").classList.add("streets");
     highlight(selected);
   }
-  routeCtl.getContainer().innerHTML = `${ICON.cross}Team ${i + 1} · back to risk map`;
+  routeCtl.getContainer().innerHTML = `${ICON.cross}${esc(label)} · back to risk map`;
+}
+
+// a team's route: stops numbered in walking order
+function drawRoute(i) {
+  const s = currentPlan[i];
+  if (!s) return;
+  streetsOn(`Team ${i + 1}`);
   const pts = s.est.order.map((j) => [B[j].lat, B[j].lon]);
   routeLayer = L.layerGroup([
     L.polyline(pts, { color: css("--team"), weight: 3, opacity: 0.85 }),
@@ -523,6 +522,19 @@ function drawRoute(i) {
   ]).addTo(map);
   mapTouched = true;
   map.fitBounds(L.latLngBounds(pts).pad(0.15), { maxZoom: 18 });
+}
+
+// a cluster: its circle, and the HDB blocks within 250 m of it that the planner counts as near a cluster
+function showCluster(c) {
+  streetsOn("Cluster");
+  const k = Math.cos((c.lat * Math.PI) / 180);
+  const near = B.filter((b) => yes(b.near_cluster) && Math.hypot((b.lon - c.lon) * 111320 * k, (b.lat - c.lat) * 110540) <= 250);
+  routeLayer = L.layerGroup(near.map((b) => L.circleMarker([b.lat, b.lon], { radius: 6, color: "#ffffff", weight: 1.5, fillColor: css("--cluster"), fillOpacity: 0.95 })
+    .bindTooltip(`Blk ${esc(b.blk_no)}`, { permanent: true, direction: "right", offset: [7, 0], className: "blk-tag cl" })
+    .on("mousemove", (e) => showTip(e.originalEvent, `<b>Blk ${esc(b.blk_no)} ${esc(title(b.street))}</b><br>${b.floors ?? "?"} floors · ${b.h} homes`))
+    .on("mouseout", hideTip))).addTo(map);
+  mapTouched = true;
+  map.setView([c.lat, c.lon], 17);
 }
 
 function exitRoute(keepView) {

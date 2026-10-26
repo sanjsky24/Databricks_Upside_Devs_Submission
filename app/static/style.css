@@ -261,9 +261,6 @@ table.risk { width: 100%; border-collapse: collapse; font-size: 13px; }
 .sites .m { color: var(--ink2); font-size: 12px; }
 .est { font-size: 13px; margin-top: 2px; }
 .warn-chip { background: var(--medium); color: #0b0b0b; border-radius: 999px; padding: 1px 8px; font-size: 12px; font-weight: 700; }
-.breakdown { display: flex; height: 7px; border-radius: 4px; overflow: hidden; margin: 6px 0 3px; gap: 2px; }
-.breakdown span { min-width: 2px; }
-.b-travel { background: var(--muted); } .b-walk { background: var(--team); } .b-insp { background: var(--accent); } .b-break { background: var(--line); }
 .site-actions { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 2px; }
 
 /* ------------------------------------------------------------------ track record */
@@ -316,6 +313,7 @@ table.risk { width: 100%; border-collapse: collapse; font-size: 13px; }
 .leaflet-tooltip.blk-tag { background: #ffffff; color: #13232f; border: 1px solid var(--team); border-radius: 4px; padding: 0 4px;
   font-size: 11px; font-weight: 700; box-shadow: none; }
 .leaflet-tooltip.blk-tag::before { display: none; }
+.leaflet-tooltip.blk-tag.cl { border-color: var(--cluster); }
 .leaflet-container .leaflet-control-attribution { background: var(--surface); color: var(--ink2); border-radius: 6px 0 0 0; }
 .leaflet-container .leaflet-control-attribution a { color: var(--accent); }
 .streets .area-label { color: #13232f; text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff; }
