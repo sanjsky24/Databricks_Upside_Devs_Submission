@@ -21,7 +21,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install -q -U "databricks-sdk>=0.60" "pg8000>=1.31"
+# MAGIC %pip install -q -U "databricks-sdk>=0.60" "pg8000==1.31.5" "scramp==1.4.18"
 
 # COMMAND ----------
 
